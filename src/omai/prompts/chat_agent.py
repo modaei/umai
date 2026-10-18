@@ -8,7 +8,7 @@ from langchain_core.prompts import PromptTemplate
 from omai.services.domain_guard import OUT_OF_DOMAIN_RESPONSE
 
 
-CHAT_SYSTEM_PROMPT_VERSION = "chat-agent-system-v2"
+CHAT_SYSTEM_PROMPT_VERSION = "chat-agent-system-v4"
 AUTHORITATIVE_CONTEXT_PROMPT_VERSION = "authoritative-context-v1"
 SQL_EXECUTED_PROMPT_VERSION = "sql-executed-v1"
 SQL_DRAFT_VALID_PROMPT_VERSION = "sql-draft-valid-v1"
@@ -60,11 +60,21 @@ TA wells mean onrr_code = 'TA'. Rod wells mean wells.pump_type = 'ROD'; ESP well
 Only run report tools when the user clearly asks to run, show, calculate, get, compare, or return actual report values, or when the user accepts a previous offer to run a specific report for a specific date range.
 </report_rules>
 
+<data_point_rules>
+Treat mentions of "data point", "datapoint", "data_point", or "data-point" as telemetry requests and use data-point tools for telemetry retrieval rather than reading, report, or operational SQL tools.
+Choose the tool and extract all parameters from the user's question and recent conversation history; do not require fixed wording or word order.
+Use get_data_point_values for current or latest telemetry values. Use analyze_data_point_trend for historical values, trends, history, or analysis over time, including equipment telemetry requests without an explicit data-point marker.
+For current values, provide facility_name for one facility or facility_names for multiple facilities, never both. Omit both facility selectors to retrieve a named data point across all facilities in the selected site. Omit data_point_name to retrieve all points for the selected facilities. At least a facility selector or data_point_name is required. For trends, extract facility_name (or monitored equipment selector), data_point_name, and optional device_name. Preserve human selectors for the tools to resolve; do not invent database identifiers. Omit device_name unless the user specifies a device.
+For trends, set equipment_type when the target is a tank, pump, or treater. For example, 'analyze tank 10-1 Oil level' uses facility_name='10-1 Oil', data_point_name='Level', equipment_type='tank'.
+For trailing days use days, defaulting to 7 when no period is specified. For named months or date ranges provide both start_date and end_date in YYYY-MM-DD format, using Today to resolve omitted years and relative periods. Named months cover the full calendar month. 'Past N months' runs from the corresponding date N months before Today through Today, clamping to the last valid day when necessary. Trend intervals are limited to 366 days; ask the user to narrow longer requests.
+Ask for clarification when required selectors cannot be determined from the question or history; current values require only a facility selector or a data-point name, while trends require both. If a tool returns ambiguous matches, ask the user to choose among the candidates; do not guess.
+For current values, a single facility_name plus data_point_name defaults the device to the facility; broader queries include all devices unless device_name is supplied. Include the facility and device identity with every value in multi-facility or all-point results. Report per-facility failures and partial results explicitly.
+Report every value when normalized data-point matching returns multiple closest matches, and include each returned received time.
+For trend answers, describe the returned overall shape, typical band, variability, first-to-last change, and significant spikes or drops. Base interpretation on the tool summary rather than endpoint change alone. Mention missing data or partial sample coverage and report tool errors faithfully.
+</data_point_rules>
+
 <reading_and_equipment_rules>
 Use reading tools for raw daily readings such as LACT, tank, water plant, flow meter, well test, pump, treater, flare, or knock-out readings, including missing-reading questions.
-Use get_data_point_values for current telemetry value questions when the user provides a facility, optional device, and data-point name.
-When the user omits device_name, omit it from the answer because the tool defaults it from the resolved facility.
-Report every value when normalized data-point matching returns multiple closest matches, and include each returned received time.
 list_equipment for inventory questions that ask what/list/which equipment belongs to a battery or matches metadata without asking for reading values; do not require or invent a date for those questions.
 Use search_equipment_readings when a reading question includes battery relation, equipment metadata, arbitrary reading-field conditions, equipment type conditions, or tank computed-volume conditions.
 Do not infer equipment battery relation from names; use the actual relation returned by the tool.

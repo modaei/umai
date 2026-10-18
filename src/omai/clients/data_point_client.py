@@ -84,90 +84,110 @@ class DataPointClient:
     def get_values(
         self,
         site_id: int,
-        facility_name: str,
-        data_point_name: str,
+        facility_name: str | None = None,
+        data_point_name: str | None = None,
         device_name: str | None = None,
+        facility_names: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Resolve selectors and return every closest matching current value."""
-        facility_query = _normalize_name(facility_name)
-        data_point_query = _normalize_name(data_point_name)
-        if not facility_query:
-            raise DataPointClientError("facility_name is required.")
-        if not data_point_query:
-            raise DataPointClientError("data_point_name is required.")
+        """Read one point across facilities, or all points for selected facilities."""
+        if facility_name is not None and facility_names is not None:
+            raise DataPointClientError("Supply facility_name or facility_names, not both.")
+        selectors = [facility_name] if facility_name is not None else facility_names
+        if selectors is not None and (not selectors or any(not _normalize_name(name) for name in selectors)):
+            raise DataPointClientError("Facility selectors must be non-empty names.")
+        if data_point_name is not None and not _normalize_name(data_point_name):
+            raise DataPointClientError("data_point_name must be a non-empty name.")
+        if selectors is None and data_point_name is None:
+            raise DataPointClientError("Provide a facility selector or data_point_name (or both).")
+        if device_name is not None and not _normalize_name(device_name):
+            raise DataPointClientError("device_name must be a non-empty name.")
 
         rows = self._site_data_points(site_id)
-        facility_matches = _ranked_matches(
-            facility_query,
-            {str(row["effective_facility_name"]) for row in rows},
-            mode="suffix",
-        )
-        if not facility_matches:
-            return _not_found("facility", facility_name)
-        if len(facility_matches) > 1:
-            return _ambiguous("facility", facility_name, facility_matches)
-        resolved_facility = facility_matches[0]
-        facility_rows = [
-            row
-            for row in rows
-            if _normalize_name(row["effective_facility_name"])
-            == _normalize_name(resolved_facility)
-        ]
+        available = {str(row["effective_facility_name"]) for row in rows if row.get("effective_facility_name")}
+        facilities = []
+        # Resolve every explicit selector before returning values: an ambiguous
+        # shorthand must never silently expand to several facilities.
+        for selector in selectors or []:
+            matches = _ranked_matches(_normalize_name(selector), available, mode="suffix")
+            if not matches:
+                return _not_found("facility", selector)
+            if len(matches) > 1:
+                return _ambiguous("facility", selector, matches)
+            if matches[0] not in facilities:
+                facilities.append(matches[0])
+        if selectors is None:
+            facilities = sorted(available)
 
-        device_defaulted = device_name is None or not str(device_name).strip()
-        requested_device = resolved_facility if device_defaulted else str(device_name)
-        device_query = _normalize_name(requested_device)
-        device_matches = _ranked_matches(
-            device_query,
-            {str(row["device_name"]) for row in facility_rows if row.get("device_name")},
-            mode="exact",
-        )
-        if not device_matches:
-            return {
-                **_not_found("device", requested_device),
-                "facility_name": resolved_facility,
-                "device_defaulted": device_defaulted,
-            }
-        if len(device_matches) > 1:
-            return {
-                **_ambiguous("device", requested_device, device_matches),
-                "facility_name": resolved_facility,
-                "device_defaulted": device_defaulted,
-            }
-        resolved_device = device_matches[0]
-        device_rows = [
-            row
-            for row in facility_rows
-            if _normalize_name(row.get("device_name")) == _normalize_name(resolved_device)
+        # Preserve the established single-facility/point default device.
+        # Broad queries include every device unless explicitly filtered.
+        legacy_scope = facility_name is not None and data_point_name is not None
+        results = [
+            self._current_facility_values(rows, facility, data_point_name, device_name, legacy_scope)
+            for facility in facilities
         ]
-
-        point_matches = _ranked_matches(
-            data_point_query,
-            {str(row["data_point_name"]) for row in device_rows if row.get("data_point_name")},
-            mode="prefix",
-        )
-        if not point_matches:
-            return {
-                **_not_found("data_point", data_point_name),
-                "facility_name": resolved_facility,
-                "device_name": resolved_device,
-                "device_defaulted": device_defaulted,
-            }
-        matched_names = {_normalize_name(name) for name in point_matches}
-        values = [
-            self._compact_value(row)
-            for row in device_rows
-            if _normalize_name(row.get("data_point_name")) in matched_names
-        ]
-        values.sort(key=lambda item: item["data_point_name"])
+        if legacy_scope:
+            return results[0]
+        values = [value for result in results for value in result.get("values", [])]
+        failures = [result for result in results if result["status"] != "found"]
         return {
-            "status": "found",
-            "facility_name": resolved_facility,
-            "device_name": resolved_device,
-            "device_defaulted": device_defaulted,
+            "status": "partial" if values and failures else "found" if values else "not_found",
+            "scope": "selected_facilities" if selectors is not None else "all_facilities",
+            "facility_names": facilities,
             "requested_data_point_name": data_point_name,
             "match_count": len(values),
             "values": values,
+            "facility_results": [
+                {key: value for key, value in result.items() if key != "values"}
+                for result in results
+            ],
+        }
+
+    def _current_facility_values(
+        self,
+        rows: list[dict[str, Any]],
+        facility: str,
+        point: str | None,
+        device: str | None,
+        default_device: bool,
+    ) -> dict[str, Any]:
+        selected = [row for row in rows if row["effective_facility_name"] == facility]
+        device_defaulted = default_device and device is None
+        requested_device = facility if device_defaulted else device
+        metadata = {"facility_name": facility, "device_defaulted": device_defaulted}
+        if requested_device is not None:
+            matches = _ranked_matches(
+                _normalize_name(requested_device),
+                {str(row["device_name"]) for row in selected if row.get("device_name")},
+                mode="exact",
+            )
+            if not matches:
+                return {**_not_found("device", requested_device), **metadata}
+            if len(matches) > 1:
+                return {**_ambiguous("device", requested_device, matches), **metadata}
+            metadata["device_name"] = matches[0]
+            selected = [row for row in selected if _normalize_name(row.get("device_name")) == _normalize_name(matches[0])]
+        # Match independently per device so an exact name on one controller
+        # cannot suppress valid prefix matches on another controller.
+        matched_rows = []
+        devices = sorted({row.get("device_name") for row in selected}, key=lambda name: str(name or ""))
+        for device_name in devices:
+            device_rows = [row for row in selected if row.get("device_name") == device_name]
+            if point is None:
+                matched_rows.extend(device_rows)
+                continue
+            matches = _ranked_matches(
+                _normalize_name(point), {str(row["data_point_name"]) for row in device_rows}, mode="prefix"
+            )
+            names = {_normalize_name(name) for name in matches}
+            matched_rows.extend(row for row in device_rows if _normalize_name(row["data_point_name"]) in names)
+        if not matched_rows:
+            return {**_not_found("data_point", point or "all data points"), **metadata}
+        values = [self._compact_value(row) for row in matched_rows]
+        values.sort(key=lambda item: (str(item["device_name"] or ""), item["data_point_name"]))
+        return {
+            "status": "found", **metadata,
+            "requested_data_point_name": point,
+            "match_count": len(values), "values": values,
         }
 
     def analyze_trend(
@@ -684,6 +704,8 @@ class DataPointClient:
                 data_error = "Current value payload is invalid JSON."
         timestamp = payload.get("timestamp") or row.get("last_update")
         value = {
+            "facility_name": row["effective_facility_name"],
+            "device_name": row.get("device_name"),
             "data_point_name": row["data_point_name"],
             "value": payload.get("value"),
             "value_available": "value" in payload,
@@ -717,9 +739,10 @@ class UnavailableDataPointClient:
     def get_values(
         self,
         site_id: int,
-        facility_name: str,
-        data_point_name: str,
+        facility_name: str | None = None,
+        data_point_name: str | None = None,
         device_name: str | None = None,
+        facility_names: list[str] | None = None,
     ) -> dict[str, Any]:
         raise DataPointClientError(self.reason)
 

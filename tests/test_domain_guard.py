@@ -93,3 +93,8 @@ def test_request_integrity_allows_an_evidence_based_operational_comparison():
 
     assert decision.allowed is True
     assert decision.reason_codes == ()
+
+
+def test_accepts_data_point_markers_without_other_domain_terms():
+    for marker in ('data point', 'datapoint', 'data_point', 'data-point', 'DATA POINTS'):
+        assert is_in_domain(f'Show {marker} stroke min for 2510')
