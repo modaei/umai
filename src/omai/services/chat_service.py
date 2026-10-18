@@ -63,7 +63,7 @@ from omai.tools.onrr_tools import build_onrr_tools
 from omai.tools.operational_context_tools import build_operational_context_tools
 from omai.tools.reading_tools import build_reading_tools
 from omai.tools.report_tools import build_report_tools
-from omai.tools.rod_pump_analysis_tools import build_rod_pump_analysis_tools
+from omai.tools.rod_pump_analysis_tools import build_rod_pump_analysis_tools, is_health_question
 from omai.tools.shutdown_tools import build_shutdown_tools
 from omai.tools.well_timeline_tools import build_well_timeline_tools
 from omai.tools.work_order_tools import build_work_order_tools
@@ -308,11 +308,7 @@ def is_rod_pump_fleet_question(question: str) -> bool:
         r"\b(rank|ranking|all|fleet|which wells?|highest|lowest|urgent|need(?:s)? attention)\b",
         normalized,
     ))
-    health_language = bool(re.search(
-        r"\b(rod pump|mechanical risk|pump health|health score|intervention)\b",
-        normalized,
-    ))
-    return fleet_language and health_language
+    return fleet_language and is_health_question(question)
 
 
 def _merge_chat_stats(

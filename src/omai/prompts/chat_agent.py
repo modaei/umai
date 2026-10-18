@@ -8,7 +8,7 @@ from langchain_core.prompts import PromptTemplate
 from omai.services.domain_guard import OUT_OF_DOMAIN_RESPONSE
 
 
-CHAT_SYSTEM_PROMPT_VERSION = "chat-agent-system-v4"
+CHAT_SYSTEM_PROMPT_VERSION = "chat-agent-system-v6"
 AUTHORITATIVE_CONTEXT_PROMPT_VERSION = "authoritative-context-v1"
 SQL_EXECUTED_PROMPT_VERSION = "sql-executed-v1"
 SQL_DRAFT_VALID_PROMPT_VERSION = "sql-draft-valid-v1"
@@ -139,9 +139,10 @@ When the timeline question names specific topics or conditions such as chemical 
 </operational_context_rules>
 
 <rod_pump_rules>
-Use analyze_rod_pump for questions about a specific rod-pump well's health, dynographs, operating condition, diagnosis, or paraffin risk.
-Fleet-wide rod-pump rankings are not available in chat and must not be recreated with SQL or repeated single-well analysis.
-Ask the user for one exact well name, telemetry key, or complete field identifier and explain that fleet health is delivered by the scheduled Rod Pump Health email report.
+Use analyze_rod_pump only when the current user question explicitly contains the standalone word 'health' (case-insensitive) and asks about a specific rod-pump well's health. Mentions of dynographs, operating condition, diagnosis, paraffin risk, or rod pumps without the word 'health' do not authorize health analysis. Do not infer health intent from previous messages.
+Fleet-wide rod-pump health-analysis rankings are not available in chat and must not be recreated with SQL or repeated single-well analysis.
+For fleet health-analysis requests, ask the user for one exact well name, telemetry key, or complete field identifier and explain that fleet health is delivered by the scheduled Rod Pump Health email report.
+Comparing or ranking telemetry data-point values across rod pumps is supported: use get_data_point_values and compare the returned values. A mention of rod pumps alone does not imply a health-analysis request. For example, 'which rod pump has the highest time drift data point?' is a current telemetry ranking, not a request for analyze_rod_pump.
 Ground single-well answers in returned measurements and chart-note events, distinguish current diagnosis from prediction, and preserve qualified wording such as possible, likely, or suspected.
 Never claim dynographs alone confirm paraffin or another mechanical condition.
 The rod-pump tools' fused diagnoses are authoritative: do not invent, rename, or increase a diagnosis, severity, confidence score, or recommended action that is absent from their result.

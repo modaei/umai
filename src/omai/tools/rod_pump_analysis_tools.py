@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from langchain_core.tools import StructuredTool
@@ -10,6 +11,11 @@ from omai.clients.rod_pump_analysis_client import (
     RodPumpAnalysisClient,
     RodPumpAnalysisError,
 )
+
+
+def is_health_question(question: str) -> bool:
+    """Health analysis requires the explicit word health in the current request."""
+    return bool(re.search(r"\bhealth\b", question, flags=re.IGNORECASE))
 
 
 class RodPumpAnalysisInput(BaseModel):
@@ -53,6 +59,7 @@ def build_rod_pump_analysis_tools(
             func=analyze_rod_pump,
             name="analyze_rod_pump",
             description=(
+                "Use only when the current user question explicitly contains the word health. "
                 "Analyze one rod-pump well identified by exact name, telemetry key, or "
                 "complete unique field identifier. Uses controller trends, every averaged "
                 "surface and downhole dynograph pull, and chart-note history. Returns "

@@ -538,3 +538,37 @@ def test_build_model_sets_reasoning_effort():
     )
 
     assert model.reasoning_effort == "high"
+
+
+def test_health_tool_is_only_available_with_explicit_current_health_word():
+    class ToolCaptureModel(FakeModel):
+        def bind_tools(self, tools, parallel_tool_calls=False):
+            self.tool_names = [item.name for item in tools]
+            return self
+
+    @tool
+    def analyze_rod_pump(well_name: str) -> str:
+        """Analyze rod-pump health."""
+        raise AssertionError('This test should not invoke health analysis')
+
+    @tool
+    def get_data_point_values(data_point_name: str) -> str:
+        """Read telemetry values."""
+        return 'test'
+
+    for question, expected in (
+        ('Which rod pump has the highest time drift data point?', False),
+        ('Analyze dynographs for well 5823', False),
+        ('Show unhealthy rod pumps', False),
+        ('Analyze HEALTH for well 5823', True),
+    ):
+        model = ToolCaptureModel()
+        answer_chat_question(
+            model=model,
+            tools=[analyze_rod_pump, get_data_point_values],
+            site_id=4,
+            history=[{'role': 'user', 'content': 'Analyze health for well 5823'}],
+            question=question,
+        )
+        assert ('analyze_rod_pump' in model.tool_names) is expected
+        assert 'get_data_point_values' in model.tool_names
