@@ -225,6 +225,9 @@ def is_in_domain(question: str, history: list[dict[str, str]] | None = None) -> 
     if not tokens:
         return False
 
+    if re.search(r"\bdata(?:\s|_|-)?points?\b", question, re.IGNORECASE):
+        return True
+
     if tokens & DOMAIN_TERMS:
         return True
 

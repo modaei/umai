@@ -13,18 +13,17 @@ logger = logging.getLogger(__name__)
 
 
 class GetDataPointValuesInput(BaseModel):
-    facility_name: str = Field(
-        description="Facility name or shorthand, for example HDU_2510 or 2510."
+    facility_name: str | None = Field(
+        default=None, description="Single facility name/shorthand, such as 2510. Use facility_names instead for multiple facilities."
     )
-    data_point_name: str = Field(
-        description="Data-point name in human or telemetry form, such as min load or min_load."
+    facility_names: list[str] | None = Field(
+        default=None, description="Explicit facility names/shorthands. Mutually exclusive with facility_name. Omit both to check a named point across all facilities in this site."
+    )
+    data_point_name: str | None = Field(
+        default=None, description="Point name, such as min load. Omit to return all points of the selected facilities. A facility selector or data_point_name is required."
     )
     device_name: str | None = Field(
-        default=None,
-        description=(
-            "Optional device name. Omit it when the user did not name a device; "
-            "the facility name will then be used as the device selector."
-        ),
+        default=None, description="Optional device filter. A single facility plus point defaults to the facility's device; broad queries include all devices when omitted."
     )
 
 
@@ -65,9 +64,10 @@ def build_data_point_tools(
     client: DataPointClient, site_id: int
 ) -> list[StructuredTool]:
     def get_data_point_values(
-        facility_name: str,
-        data_point_name: str,
+        facility_name: str | None = None,
+        data_point_name: str | None = None,
         device_name: str | None = None,
+        facility_names: list[str] | None = None,
     ) -> str:
         """Get current telemetry values using normalized site-scoped selectors."""
         logger.info(
@@ -83,6 +83,7 @@ def build_data_point_tools(
                 facility_name=facility_name,
                 data_point_name=data_point_name,
                 device_name=device_name,
+                facility_names=facility_names,
             )
             return json.dumps({"ok": True, **result}, default=str, separators=(",", ":"))
         except DataPointClientError as exc:
@@ -132,8 +133,10 @@ def build_data_point_tools(
             name="get_data_point_values",
             description=(
                 "Get the latest current value and received time for one or more "
-                "matching telemetry data points. Use when the user provides a "
-                "facility, optional device, and data-point name. Names are normalized; "
+                "matching telemetry data points across one, multiple, or all site facilities. "
+                "Provide facility_name or facility_names, data_point_name, or both. "
+                "Omit the point for all points at selected facilities; omit facilities "
+                "for a named point across the site. Neither selector may be blank. Names are normalized; "
                 "a request such as min load may return both min_load_ls and min_load_sp."
             ),
             args_schema=GetDataPointValuesInput,

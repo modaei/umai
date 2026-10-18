@@ -64,3 +64,26 @@ def test_sql_control_prompts_are_versioned():
     assert "<sql_final_response>" in success.content
     assert "<sql_draft_valid>" in draft_valid.content
     assert "<sql_failed>" in failed.content
+
+
+def test_data_point_routing_and_parameter_extraction_belong_to_model():
+    content = build_chat_system_message(site_name='Test', site_id=4, today='2026-10-18').content
+
+    assert '<data_point_rules>' in content
+    assert '"datapoint"' in content
+    assert 'Choose the tool and extract all parameters' in content
+    assert 'Use get_data_point_values for current or latest' in content
+    assert 'Use analyze_data_point_trend for historical' in content
+    assert 'recent conversation history' in content
+    assert 'start_date and end_date' in content
+    assert 'ask the user to choose among the candidates' in content
+
+
+def test_value_prompt_supports_multiple_facilities_and_optional_point():
+    content = build_chat_system_message(site_name='Test', site_id=4, today='2026-10-18').content
+
+    assert 'facility_names for multiple facilities, never both' in content
+    assert 'Omit both facility selectors' in content
+    assert 'Omit data_point_name to retrieve all points' in content
+    assert 'Include the facility and device identity with every value' in content
+    assert 'Report per-facility failures and partial results explicitly' in content

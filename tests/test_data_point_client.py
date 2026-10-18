@@ -323,3 +323,115 @@ def test_summary_classifies_flat_series_with_high_spike_plateau():
     assert summary["average_distorted_by_outliers"] is True
     assert any("Abnormal high spike/plateau" in anomaly for anomaly in summary["anomalies"])
     assert not any("point-to-point drop" in anomaly for anomaly in summary["anomalies"])
+
+
+def test_all_points_for_facility_includes_all_devices_and_unavailable_values():
+    result = make_client().get_values(1, facility_name='2510')
+
+    assert result['status'] == 'found'
+    assert result['match_count'] == 8
+    assert {item['device_name'] for item in result['values']} == {'HDU_2510', 'Controller A'}
+    assert all(item['facility_name'] == 'HDU_2510' for item in result['values'])
+    bad = next(item for item in result['values'] if item['data_point_name'] == 'bad_payload')
+    assert bad['value_available'] is False
+    assert any(item['active'] is False for item in result['values'])
+
+
+def test_named_point_across_all_facilities_is_site_scoped_and_reports_missing():
+    result = make_client().get_values(1, data_point_name='stroke min')
+
+    assert result['scope'] == 'all_facilities'
+    assert result['status'] == 'partial'
+    assert result['match_count'] == 1
+    assert result['values'][0]['value'] == 4.84
+    assert result['values'][0]['facility_name'] == 'HDU_2510'
+    assert any(item['status'] == 'not_found' for item in result['facility_results'])
+
+
+def test_multiple_explicit_facilities_are_not_ambiguous_and_are_deduplicated():
+    result = make_client().get_values(
+        1, facility_names=['ABC_9999', 'XYZ_9999', 'ABC 9999'], data_point_name='value'
+    )
+
+    assert result['status'] == 'found'
+    assert result['match_count'] == 2
+    assert {item['facility_name'] for item in result['values']} == {'ABC_9999', 'XYZ_9999'}
+    assert all(item['value_available'] is False for item in result['values'])
+
+
+def test_ambiguous_or_missing_explicit_facility_does_not_return_partial_scope():
+    client = make_client()
+    ambiguous = client.get_values(1, facility_names=['2510', '9999'], data_point_name='value')
+    missing = client.get_values(1, facility_names=['2510', 'missing'], data_point_name='value')
+
+    assert ambiguous['status'] == 'ambiguous'
+    assert ambiguous['selector'] == 'facility'
+    assert 'values' not in ambiguous
+    assert missing['status'] == 'not_found'
+    assert missing['selector'] == 'facility'
+    assert 'values' not in missing
+
+
+def test_multiple_facilities_without_point_returns_all_points():
+    result = make_client().get_values(1, facility_names=['2510', 'TankFacility'])
+
+    assert result['status'] == 'found'
+    assert result['match_count'] == 9
+    assert any(item['device_name'] == 'Tank Device' for item in result['values'])
+
+
+def test_broad_queries_filter_devices_and_keep_per_device_point_matching():
+    client = make_client()
+    with client.engine.begin() as connection:
+        connection.execute(text("INSERT INTO data_points (id, site_id, facility_name, device_name, data_point_name) VALUES (30, 1, 'ABC_9999', 'Controller A', 'min_load')"))
+        connection.execute(text("INSERT INTO data_points (id, site_id, facility_name, device_name, data_point_name) VALUES (31, 1, 'ABC_9999', 'Controller B', 'min_load_ls')"))
+    result = client.get_values(1, facility_names=['ABC_9999'], data_point_name='min load')
+    assert {item['data_point_name'] for item in result['values']} == {'min_load', 'min_load_ls'}
+    filtered = client.get_values(1, data_point_name='pressure', device_name='Controller-A')
+    assert filtered['match_count'] == 1
+    assert filtered['values'][0]['value'] == 75
+    assert filtered['values'][0]['device_name'] == 'Controller A'
+
+
+def test_value_scope_validation_rejects_empty_or_conflicting_selectors():
+    import pytest
+    from omai.clients.data_point_client import DataPointClientError
+
+    client = make_client()
+    for arguments in (
+        {}, {'device_name': 'Controller A'}, {'facility_names': []},
+        {'facility_name': ' '}, {'facility_names': ['2510', '']},
+        {'data_point_name': ''}, {'data_point_name': '---'},
+        {'facility_name': '2510', 'data_point_name': ''},
+        {'facility_name': '2510', 'facility_names': ['2510']},
+        {'data_point_name': 'pressure', 'device_name': ''},
+    ):
+        with pytest.raises(DataPointClientError):
+            client.get_values(1, **arguments)
+
+
+def test_no_match_and_empty_site_return_no_values():
+    client = make_client()
+    for site_id, point in ((1, 'missing point'), (999, 'stroke min')):
+        result = client.get_values(site_id, data_point_name=point)
+        assert result['status'] == 'not_found'
+        assert result['values'] == []
+
+
+def test_value_tool_exposes_new_scopes_and_returns_structured_errors():
+    from omai.tools.data_point_tools import build_data_point_tools
+    from omai.clients.data_point_client import UnavailableDataPointClient
+
+    tool = build_data_point_tools(make_client(), site_id=1)[0]
+    for arguments, count in (
+        ({'facility_name': '2510'}, 8),
+        ({'facility_names': ['ABC_9999', 'XYZ_9999'], 'data_point_name': 'value'}, 2),
+        ({'data_point_name': 'stroke min'}, 1),
+    ):
+        result = json.loads(tool.invoke(arguments))
+        assert result['ok'] is True
+        assert result['match_count'] == count
+    invalid = json.loads(tool.invoke({}))
+    assert invalid['ok'] is False
+    unavailable = build_data_point_tools(UnavailableDataPointClient('Unavailable'), site_id=1)[0]
+    assert json.loads(unavailable.invoke({'facility_names': ['2510']})) == {'ok': False, 'error': 'Unavailable'}
