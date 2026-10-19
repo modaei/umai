@@ -48,7 +48,7 @@ from omai.services.rag_sources import extract_rag_sources
 ALLOWED_HOSTS = {"127.0.0.1", "::1"}
 
 # Temporarily pause the extra reviews while retaining their implementation and saved results.
-EXTENDED_HEALTH_ANALYSIS_ENABLED = False
+EXTENDED_HEALTH_ANALYSIS_ENABLED = True
 
 logger = logging.getLogger(__name__)
 
