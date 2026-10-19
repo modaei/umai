@@ -47,6 +47,9 @@ from omai.services.rag_sources import extract_rag_sources
 
 ALLOWED_HOSTS = {"127.0.0.1", "::1"}
 
+# Temporarily pause the extra reviews while retaining their implementation and saved results.
+EXTENDED_HEALTH_ANALYSIS_ENABLED = False
+
 logger = logging.getLogger(__name__)
 
 ChatHandler = Callable[
@@ -107,7 +110,7 @@ def create_app(
 
     @app.post("/rod-pump-health-analysis")
     def rod_pump_health_analysis(payload: WellAnalysisRequest) -> dict[str, Any]:
-        """Run card, parameter-trend and final-conclusion LLM reviews sequentially for one well."""
+        """Review cards; run the retained optional stages only when explicitly re-enabled."""
         if not app.state.dynograph_slots.acquire(timeout=settings.omai_slot_timeout):
             raise HTTPException(status_code=503, detail="Rod-pump health analysis is busy")
         try:
@@ -120,6 +123,11 @@ def create_app(
                 result = {
                     "well_id": payload.well_id, "site_id": well["site_id"],
                     "review_status": "failed", "review_error": "Dynograph analysis failed.",
+                }
+            if not EXTENDED_HEALTH_ANALYSIS_ENABLED:
+                return {
+                    **result, "parameter_trends": {"status": "disabled"},
+                    "conclusion": {"status": "disabled"},
                 }
             try:
                 parameter_trends = parameter_analyzer_from_settings(settings).analyze(payload.well_id)

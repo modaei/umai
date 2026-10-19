@@ -162,6 +162,30 @@ def test_no_unusual_trends_retains_combined_interpretation(analyzer):
     assert result["interpretation"] == "No unusual monthly trends."
 
 
+@pytest.mark.parametrize("cached", [False, True])
+def test_health_endpoint_skips_all_optional_calls_by_default(monkeypatch, cached):
+    import importlib
+    from omai.rod_pump_health.reader import WellAnalysisRequest
+
+    module = importlib.import_module("omai.api.app")
+    assert module.EXTENDED_HEALTH_ANALYSIS_ENABLED is False
+    health = SimpleNamespace(
+        _well=lambda well_id: {"id": well_id, "site_id": 4},
+        analyze=lambda *args: {"well_id": 23, "review_status": "complete", "unchanged": cached},
+    )
+    monkeypatch.setattr(module, "analyzer_from_settings", lambda _: health)
+    with patch.object(module, "parameter_analyzer_from_settings") as parameters:
+        with patch.object(module, "conclusion_analyzer_from_settings") as conclusion:
+            app = module.create_app()
+            route = next(r for r in app.routes if r.path == "/rod-pump-health-analysis")
+            result = route.endpoint(WellAnalysisRequest(well_id=23))
+    assert result["review_status"] == "complete"
+    assert result["parameter_trends"]["status"] == "disabled"
+    assert result["conclusion"]["status"] == "disabled"
+    parameters.assert_not_called()
+    conclusion.assert_not_called()
+
+
 @pytest.mark.parametrize("card_fails,trend_fails,cached,conclusion_fails", [
     (False, False, False, False), (False, False, True, False),
     (True, False, False, False), (False, True, False, False), (False, False, False, True),
@@ -173,6 +197,7 @@ def test_health_endpoint_reviews_in_order(
     from omai.rod_pump_health.reader import WellAnalysisRequest
 
     module = importlib.import_module("omai.api.app")
+    monkeypatch.setattr(module, "EXTENDED_HEALTH_ANALYSIS_ENABLED", True)
     calls = []
 
     class CardAnalyzer:
