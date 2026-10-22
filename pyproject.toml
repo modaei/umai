@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "omai"
+name = "umai"
 version = "0.1.0"
 description = "Read-only Ometrics AI assistant."
 requires-python = ">=3.10"
@@ -30,16 +30,16 @@ dev = [
 ]
 
 [project.scripts]
-omai-index-operational-text = "omai.rag.index_operational_text:main"
-omai-process-rag-index-events = "omai.rag.process_index_events:main"
-omai-vector-db-migrate = "omai.rag.migrate_vector_db:main"
-omai-evaluate = "omai.evals.runner:main"
+umai-index-operational-text = "umai.rag.index_operational_text:main"
+umai-process-rag-index-events = "umai.rag.process_index_events:main"
+umai-vector-db-migrate = "umai.rag.migrate_vector_db:main"
+umai-evaluate = "umai.evals.runner:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-omai = ["evals/cases/*.json"]
+umai = ["evals/cases/*.json"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

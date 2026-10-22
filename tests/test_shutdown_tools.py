@@ -1,6 +1,6 @@
 import json
 
-from omai.tools.shutdown_tools import build_shutdown_tools
+from umai.tools.shutdown_tools import build_shutdown_tools
 
 
 class FakeShutdownClient:

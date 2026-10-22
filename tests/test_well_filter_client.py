@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import create_engine, text
 
-from omai.clients.well_filter_client import WellFilterClient, WellFilterClientError
+from umai.clients.well_filter_client import WellFilterClient, WellFilterClientError
 
 
 def make_client() -> WellFilterClient:

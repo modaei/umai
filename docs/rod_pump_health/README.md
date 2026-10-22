@@ -1,7 +1,7 @@
 # Rod pump health analyzer
 
 Parameter-trend and conclusion reviews are temporarily disabled by
-`EXTENDED_HEALTH_ANALYSIS_ENABLED = False` in `src/omai/api/app.py`. The health endpoint runs only
+`EXTENDED_HEALTH_ANALYSIS_ENABLED = False` in `src/umai/api/app.py`. The health endpoint runs only
 the dynograph review and returns `status: disabled` for both optional stages, without invoking
 their analyzers or LLMs. UMetriqs keeps existing optional results in storage and hides their dialog
 sections via `extendedHealthAnalysisEnabled` in the health page. To restore the feature, re-enable

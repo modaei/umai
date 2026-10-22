@@ -1,5 +1,5 @@
-from omai.clients.work_order_client import WorkOrderClientError
-from omai.tools.work_order_tools import build_work_order_tools
+from umai.clients.work_order_client import WorkOrderClientError
+from umai.tools.work_order_tools import build_work_order_tools
 
 
 class FakeWorkOrderClient:

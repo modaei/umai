@@ -1,6 +1,6 @@
 import json
 
-from omai.tools.reading_tools import build_reading_tools
+from umai.tools.reading_tools import build_reading_tools
 
 
 class FakeReadingClient:

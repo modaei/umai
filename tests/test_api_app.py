@@ -6,11 +6,11 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import create_engine, text
 
-from omai.api.app import create_app, is_allowed_client_host
-from omai.api.schemas import ChatRequest, RodPumpHealthReportRequest, WeeklyOverviewRequest
-from omai.config.settings import Settings
-from omai.repositories.conversation_repository import ConversationRepository
-from omai.services.domain_guard import MAX_CHAT_REQUEST_CHARACTERS, OUT_OF_DOMAIN_RESPONSE
+from umai.api.app import create_app, is_allowed_client_host
+from umai.api.schemas import ChatRequest, RodPumpHealthReportRequest, WeeklyOverviewRequest
+from umai.config.settings import Settings
+from umai.repositories.conversation_repository import ConversationRepository
+from umai.services.domain_guard import MAX_CHAT_REQUEST_CHARACTERS, OUT_OF_DOMAIN_RESPONSE
 
 
 def make_settings() -> Settings:
@@ -34,12 +34,12 @@ def make_settings() -> Settings:
         operational_sql_db_password="readonly-pass",
         operational_sql_max_rows=100,
         operational_sql_timeout_seconds=10,
-        omai_max_concurrent=2,
-        omai_slot_timeout=1,
-        omai_conversation_history_limit=20,
-        omai_conversation_ttl_hours=168,
-        omai_daily_user_limit_enabled=True,
-        omai_daily_user_limit_requests=100,
+        umai_max_concurrent=2,
+        umai_slot_timeout=1,
+        umai_conversation_history_limit=20,
+        umai_conversation_ttl_hours=168,
+        umai_daily_user_limit_enabled=True,
+        umai_daily_user_limit_requests=100,
         timezone="UTC",
         vector_db_host="127.0.0.1",
         vector_db_port=5432,
@@ -576,7 +576,7 @@ def test_chat_endpoint_rejects_when_daily_user_limit_is_reached():
     repository = make_conversation_repository()
     seed_daily_usage(repository, user_id=9, request_count=1)
     app = create_app(
-        settings=replace(make_settings(), omai_daily_user_limit_requests=1),
+        settings=replace(make_settings(), umai_daily_user_limit_requests=1),
         chat_handler=failing_chat_handler,
         conversation_repository=repository,
     )
@@ -611,8 +611,8 @@ def test_chat_endpoint_daily_user_limit_can_be_disabled():
     app = create_app(
         settings=replace(
             make_settings(),
-            omai_daily_user_limit_enabled=False,
-            omai_daily_user_limit_requests=1,
+            umai_daily_user_limit_enabled=False,
+            umai_daily_user_limit_requests=1,
         ),
         chat_handler=fake_chat_handler,
         conversation_repository=repository,
@@ -637,7 +637,7 @@ def test_chat_endpoint_daily_user_limit_is_scoped_by_site():
     repository = make_conversation_repository()
     seed_daily_usage(repository, user_id=9, site_id=4, request_count=1)
     app = create_app(
-        settings=replace(make_settings(), omai_daily_user_limit_requests=1),
+        settings=replace(make_settings(), umai_daily_user_limit_requests=1),
         chat_handler=fake_chat_handler,
         conversation_repository=repository,
     )

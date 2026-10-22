@@ -1,4 +1,4 @@
-from omai.prompts.chat_agent import (
+from umai.prompts.chat_agent import (
     AUTHORITATIVE_CONTEXT_PROMPT_VERSION,
     CHAT_SYSTEM_PROMPT_VERSION,
     SQL_DRAFT_VALID_PROMPT_VERSION,
@@ -11,7 +11,7 @@ from omai.prompts.chat_agent import (
     build_sql_failed_message,
     build_sql_success_final_message,
 )
-from omai.services.domain_guard import OUT_OF_DOMAIN_RESPONSE
+from umai.services.domain_guard import OUT_OF_DOMAIN_RESPONSE
 
 
 def test_chat_system_prompt_has_versioned_xml_sections_and_variables():

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import pytest
 from sqlalchemy import create_engine, text
 
-from omai.repositories.daily_usage_repository import (
+from umai.repositories.daily_usage_repository import (
     DailyUsageLimitExceeded,
     DailyUsageRepository,
 )

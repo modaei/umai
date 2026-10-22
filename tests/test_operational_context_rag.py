@@ -3,9 +3,9 @@ from datetime import date
 from sqlalchemy import MetaData, create_engine, text
 from sqlalchemy.dialects import postgresql
 
-from omai.rag.document_models import RagDocument, chunk_document
-from omai.rag.extractors.operational_text import OperationalTextExtractor
-from omai.rag.vector_store import (
+from umai.rag.document_models import RagDocument, chunk_document
+from umai.rag.extractors.operational_text import OperationalTextExtractor
+from umai.rag.vector_store import (
     _batched,
     _chunk_row,
     _entity_name_condition,
@@ -15,7 +15,7 @@ from omai.rag.vector_store import (
     _rag_chunks_table,
     _search_row_to_match,
 )
-from omai.tools.operational_context_tools import build_operational_context_tools
+from umai.tools.operational_context_tools import build_operational_context_tools
 
 
 class FakeOperationalContextStore:

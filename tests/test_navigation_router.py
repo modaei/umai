@@ -5,7 +5,7 @@ import pytest
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-from omai.agents.navigation_router import try_answer_navigation_request
+from umai.agents.navigation_router import try_answer_navigation_request
 
 
 class ViewArguments(BaseModel):

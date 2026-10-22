@@ -1,4 +1,4 @@
-from omai.services.rod_pump_analysis_engine import (
+from umai.services.rod_pump_analysis_engine import (
     anomaly_score,
     fuse_diagnoses,
 )

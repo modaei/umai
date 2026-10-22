@@ -4,7 +4,7 @@ from datetime import date
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 
-from omai.agents.report_comparison_graph import prepare_report_comparison_dependency
+from umai.agents.report_comparison_graph import prepare_report_comparison_dependency
 
 
 class CompareArguments(BaseModel):

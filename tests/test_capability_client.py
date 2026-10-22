@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from omai.clients.capability_client import CapabilityClient
-from omai.tools.capability_tools import build_capability_tools
+from umai.clients.capability_client import CapabilityClient
+from umai.tools.capability_tools import build_capability_tools
 
 
 def make_client() -> CapabilityClient:

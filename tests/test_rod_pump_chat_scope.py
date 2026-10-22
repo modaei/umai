@@ -1,4 +1,4 @@
-from omai.services.chat_service import is_rod_pump_fleet_question
+from umai.services.chat_service import is_rod_pump_fleet_question
 
 
 def test_blocks_expensive_rod_pump_fleet_questions():
