@@ -110,7 +110,7 @@ def _preflight(settings: Settings) -> None:
     _check_deepeval()
     _check_mysql(settings)
     _check_vector_db(settings)
-    _check_omreports(settings)
+    _check_umreports(settings)
 
 
 def _check_deepeval() -> None:
@@ -153,14 +153,14 @@ def _check_vector_db(settings: Settings) -> None:
         raise RuntimeError("Vector DB table public.rag_chunks does not exist.")
 
 
-def _check_omreports(settings: Settings) -> None:
-    # Omreports does not expose a guaranteed health endpoint in this package.
+def _check_umreports(settings: Settings) -> None:
+    # UMreports does not expose a guaranteed health endpoint in this package.
     # A lightweight GET is enough to catch connection refusal in local setup.
     try:
         with httpx.Client(timeout=3) as client:
-            client.get(settings.omreports_api_url)
+            client.get(settings.umreports_api_url)
     except httpx.HTTPError as exc:
-        raise RuntimeError(f"Omreports is not reachable: {exc}") from exc
+        raise RuntimeError(f"UMreports is not reachable: {exc}") from exc
 
 
 def _configure_deepeval_environment(settings: Settings) -> None:

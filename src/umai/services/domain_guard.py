@@ -126,7 +126,7 @@ DOMAIN_TERMS = {
     "oil",
     "umai",
     "ometrics",
-    "omreports",
+    "umreports",
     "onrr",
     "plant",
     "pressure",

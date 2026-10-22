@@ -16,8 +16,8 @@ class Settings:
     llm_api_key: str
     llm_model: str
     llm_base_url: str
-    omreports_api_url: str
-    omreports_timeout_seconds: float
+    umreports_api_url: str
+    umreports_timeout_seconds: float
     max_report_days: int
     db_host: str
     db_port: int
@@ -79,11 +79,11 @@ class Settings:
                 "LLM_BASE_URL",
                 os.getenv("OPENROUTER_BASE_URL", "https://api.openai.com/v1"),
             ).rstrip("/"),
-            omreports_api_url=os.getenv(
-                "OMREPORTS_API_URL", "http://127.0.0.1:50008/report/"
+            umreports_api_url=os.getenv(
+                "UMREPORTS_API_URL", "http://127.0.0.1:50008/report/"
             ).strip(),
-            omreports_timeout_seconds=float(
-                os.getenv("OMREPORTS_TIMEOUT_SECONDS", "30")
+            umreports_timeout_seconds=float(
+                os.getenv("UMREPORTS_TIMEOUT_SECONDS", "30")
             ),
             max_report_days=int(os.getenv("MAX_REPORT_DAYS", "366")),
             monitoring_data_api_url=os.getenv(
@@ -150,8 +150,8 @@ class Settings:
     def validate(self) -> None:
         if not self.llm_api_key:
             raise ValueError("LLM_API_KEY is not configured.")
-        if self.omreports_timeout_seconds <= 0:
-            raise ValueError("OMREPORTS_TIMEOUT_SECONDS must be positive.")
+        if self.umreports_timeout_seconds <= 0:
+            raise ValueError("UMREPORTS_TIMEOUT_SECONDS must be positive.")
         if self.max_report_days <= 0:
             raise ValueError("MAX_REPORT_DAYS must be positive.")
         if not self.monitoring_data_api_url:

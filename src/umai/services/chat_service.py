@@ -102,8 +102,8 @@ def answer_chat(
     resolved_site_name = site_name or _site_name_from_db(settings, site_id)
 
     report_client = ReportClient(
-        api_url=settings.omreports_api_url,
-        timeout_seconds=settings.omreports_timeout_seconds,
+        api_url=settings.umreports_api_url,
+        timeout_seconds=settings.umreports_timeout_seconds,
         max_report_days=settings.max_report_days,
     )
     try:

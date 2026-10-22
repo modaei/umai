@@ -67,7 +67,7 @@ class ReportClient:
         except httpx.HTTPError as exc:
             raise ReportClientError(
                 "Could not connect to the reporting service. "
-                "Confirm that omreports is running on the configured URL."
+                "Confirm that umreports is running on the configured URL."
             ) from exc
 
         try:

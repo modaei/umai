@@ -159,7 +159,7 @@ def _row_month(row: dict[str, Any]) -> str | None:
 
     if isinstance(raw_date, (int, float)):
         try:
-            # omreports indexed report rows use Unix milliseconds for dates.
+            # UMreports indexed report rows use Unix milliseconds for dates.
             return datetime.fromtimestamp(raw_date / 1000, tz=timezone.utc).strftime(
                 "%Y-%m"
             )

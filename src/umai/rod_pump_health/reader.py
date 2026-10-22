@@ -232,7 +232,7 @@ class RodPumpHealthAnalyzer:
         return row
 
     def _downhole(self, well, cards):
-        """Use the existing Omreports inline-card API; failures still allow surface analysis."""
+        """Use the existing UMreports inline-card API; failures still allow surface analysis."""
         try:
             response = self.http_post(
                 self.report_url,
@@ -429,6 +429,6 @@ def analyzer_from_settings(settings):
         operational,
         archive,
         settings.timezone,
-        settings.omreports_api_url,
+        settings.umreports_api_url,
         lambda content: llm_reviewer(settings)(content),
     )

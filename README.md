@@ -9,12 +9,12 @@ UMAI is the read-only AI agent for Ometrics. It interprets oil-field operations
 questions, chooses the appropriate tool or data path, retrieves the required 
 operational context, and produces grounded answers from the retrieved data. 
 The agent is built with LangChain, LangGraph and an OpenAI-compatible chat
-model, and it can call Ometrics, Omreports, RAG, and validated SQL tools
+model, and it can call Ometrics, UMreports, RAG, and validated SQL tools
 depending on the user's request.
 
 The Ometrics application uses UMAI through a local FastAPI `/chat`
 endpoint. UMAI is not intended to run independently. It is an AI agent layer
-for an existing Ometrics deployment, with Ometrics and Omreports remaining the
+for an existing Ometrics deployment, with Ometrics and UMreports remaining the
 systems of record.
 
 ## Responsibilities
@@ -29,7 +29,7 @@ UMAI is responsible for:
 - Acting as a tool-using operational agent: interpreting user intent, selecting
   the best available tool, passing scoped arguments, and synthesizing the result
   into a user-facing answer.
-- Running Omreports functions for report questions, including production,
+- Running UMreports functions for report questions, including production,
   sales, gas, water, injection, allocation, and monthly battery summaries.
 - Reading Ometrics MySQL data for raw readings, missing readings, comparisons,
   tank volumes, well shutdowns, shutdown-cause summaries, current long
@@ -57,13 +57,13 @@ At runtime it depends on:
 
 - Ometrics MySQL database for site data, readings, shutdowns, notes, alarms,
   well history, and conversation storage.
-- Omreports service for calculated production, sales, gas, water, injection,
+- UMreports service for calculated production, sales, gas, water, injection,
   allocation, and battery reports.
 - A configured LLM provider through an OpenAI-compatible API.
 - Postgres + pgvector for operational-text RAG, if RAG questions should be
   supported.
 
-Without the Ometrics database and Omreports service, UMAI can start, but most
+Without the Ometrics database and UMreports service, UMAI can start, but most
 domain tools will be unavailable or return errors.
 
 ## Architecture
@@ -75,7 +75,7 @@ domain tools will be unavailable or return errors.
   final answer.
 - Deterministic routing handles common high-confidence workflows before a full
   LLM tool-selection loop is needed.
-- `omreports` remains the source for calculated report results.
+- `umreports` remains the source for calculated report results.
 - Ometrics MySQL remains the source of operational records.
 - Postgres + pgvector stores the derived operational-text vector index.
 - Conversation messages are stored in the Ometrics database through UMAI's
@@ -93,7 +93,7 @@ UMAI AI agent
         └─ LangChain LLM tool-selection loop
                  │
                  ▼
-        Ometrics / Omreports / RAG / validated SQL tools
+        Ometrics / UMreports / RAG / validated SQL tools
                  │
                  ▼
         grounded final answer returned to Ometrics
@@ -178,17 +178,17 @@ OPERATIONAL_SQL_MAX_ROWS=100
 OPERATIONAL_SQL_TIMEOUT_SECONDS=10
 ```
 
-Configure Omreports:
+Configure UMreports:
 
 ```bash
-OMREPORTS_API_URL=http://127.0.0.1:50008/report/
+UMREPORTS_API_URL=http://127.0.0.1:50008/report/
 MONITORING_DATA_API_URL=http://metrics1.ultimatesys.com/render
 ROD_PUMP_TIMEOUT_SECONDS=20
 ROD_PUMP_MAX_DATA_POINTS=96
 ROD_PUMP_BATCH_WORKERS=2
 # Leave unset until a paraffin model passes the validation gate.
 ROD_PUMP_MODEL_METADATA=
-OMREPORTS_TIMEOUT_SECONDS=30
+UMREPORTS_TIMEOUT_SECONDS=30
 MAX_REPORT_DAYS=366
 ```
 
@@ -237,7 +237,7 @@ rolling repair refreshes.
 
 ## Running Services
 
-Start Omreports. The Ometrics software bundle keeps the Omreports repository
+Start UMreports. The Ometrics software bundle keeps the UMreports repository
 next to the UMAI repository:
 
 ```bash
@@ -280,7 +280,7 @@ pytest -q
 ```
 
 The unit tests use fakes and in-memory databases where possible. They do not
-require a live LLM API, Omreports service, MySQL database, or vector database.
+require a live LLM API, UMreports service, MySQL database, or vector database.
 
 ## Local Evaluation
 
@@ -292,7 +292,7 @@ umai-evaluate
 ```
 
 This command uses the real local UMAI configuration: the configured UMAI LLM for
-answers, Ometrics MySQL database, Omreports service, operational SQL user, and
+answers, Ometrics MySQL database, UMreports service, operational SQL user, and
 Postgres + pgvector RAG index. For DeepEval judge calls, UMAI maps `LLM_API_KEY`
 and `LLM_BASE_URL` into OpenAI-compatible environment variables when they are not
 already set. It is not part of normal CI and may consume LLM/API credits.
@@ -309,7 +309,7 @@ umai-evaluate --failed-only
 Use `--current-date YYYY-MM-DD` to supply a default date for cases that do not
 define `current_date`. If a case defines `current_date`, the case value wins.
 
-Before running cases, the command validates local DB, vector DB, and Omreports
+Before running cases, the command validates local DB, vector DB, and UMreports
 connectivity. Results are written to `eval-results/umai-eval-*.json`. Each result
 contains only:
 
