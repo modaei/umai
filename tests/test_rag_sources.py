@@ -1,6 +1,6 @@
 import json
 
-from omai.services.rag_sources import extract_rag_sources, format_rag_source
+from umai.services.rag_sources import extract_rag_sources, format_rag_source
 
 
 def rag_trace(matches, ok=True):

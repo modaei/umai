@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine, text
 
-from omai.clients.site_client import SiteClient
+from umai.clients.site_client import SiteClient
 
 
 def test_get_site_name_returns_name_for_site_id():

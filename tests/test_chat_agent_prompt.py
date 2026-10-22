@@ -3,12 +3,12 @@ from datetime import date
 from langchain_core.messages import AIMessage
 from langchain_core.tools import tool
 
-from omai.agents.chat_agent import (
+from umai.agents.chat_agent import (
     answer_chat_question,
     build_model,
     reasoning_effort_for_response_mode,
 )
-from omai.services.domain_guard import OUT_OF_DOMAIN_RESPONSE
+from umai.services.domain_guard import OUT_OF_DOMAIN_RESPONSE
 
 
 class FakeModel:
@@ -538,3 +538,37 @@ def test_build_model_sets_reasoning_effort():
     )
 
     assert model.reasoning_effort == "high"
+
+
+def test_health_tool_is_only_available_with_explicit_current_health_word():
+    class ToolCaptureModel(FakeModel):
+        def bind_tools(self, tools, parallel_tool_calls=False):
+            self.tool_names = [item.name for item in tools]
+            return self
+
+    @tool
+    def analyze_rod_pump(well_name: str) -> str:
+        """Analyze rod-pump health."""
+        raise AssertionError('This test should not invoke health analysis')
+
+    @tool
+    def get_data_point_values(data_point_name: str) -> str:
+        """Read telemetry values."""
+        return 'test'
+
+    for question, expected in (
+        ('Which rod pump has the highest time drift data point?', False),
+        ('Analyze dynographs for well 5823', False),
+        ('Show unhealthy rod pumps', False),
+        ('Analyze HEALTH for well 5823', True),
+    ):
+        model = ToolCaptureModel()
+        answer_chat_question(
+            model=model,
+            tools=[analyze_rod_pump, get_data_point_values],
+            site_id=4,
+            history=[{'role': 'user', 'content': 'Analyze health for well 5823'}],
+            question=question,
+        )
+        assert ('analyze_rod_pump' in model.tool_names) is expected
+        assert 'get_data_point_values' in model.tool_names

@@ -1,7 +1,7 @@
 # Ometrics Operational Database Schema
 
 This document is the curated schema context for a future read-only SQL tool.
-It is intentionally limited to operational tables that may be queried by Omai.
+It is intentionally limited to operational tables that may be queried by UMAI.
 It is not a full database dump, and it must not be treated as permission to
 query tables outside the allowlist below.
 
@@ -404,7 +404,7 @@ For recoverable mixed-tank oil, calculate top level minus the greater of water
 level and `tanks.unusable_height`, clamp the height at zero, and multiply by
 `tanks.bbl_foot`.
 
-Computed fields returned by Omai reading tools are not database columns. Do not
+Computed fields returned by UMAI reading tools are not database columns. Do not
 write SQL against `oil_volume`, `water_volume`, `total_volume`, or
 `recoverable_oil_volume`, and do not
 use a unified `tank_readings` table. For SQL, use the specific reading tables
@@ -483,7 +483,7 @@ execution, but the current operational conventions are:
 
 ## Query Preference
 
-Use existing structured Omai tools before SQL for standard report, reading,
+Use existing structured UMAI tools before SQL for standard report, reading,
 shutdown, timeline, capability, and RAG questions. The future SQL tool should be
 reserved for ad hoc analysis, cross-table checks, unusual aggregations, and
 debugging questions that cannot be answered well by existing tools.

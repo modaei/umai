@@ -4,7 +4,7 @@ venv/
 __pycache__/
 .pytest_cache/
 *.pyc
-omai.log
+umai.log
 *.egg-info/
 build/
 .idea/

@@ -4,7 +4,7 @@ from datetime import date
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 
-from omai.agents.production_context_graph import prepare_production_context_dependency
+from umai.agents.production_context_graph import prepare_production_context_dependency
 
 
 class MonthlyReportArguments(BaseModel):

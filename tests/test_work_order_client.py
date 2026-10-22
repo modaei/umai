@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import create_engine, text
 
-from omai.clients.work_order_client import WorkOrderClient, WorkOrderClientError
+from umai.clients.work_order_client import WorkOrderClient, WorkOrderClientError
 
 
 def make_work_order_client() -> WorkOrderClient:

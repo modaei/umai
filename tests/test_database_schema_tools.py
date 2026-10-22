@@ -2,12 +2,12 @@ import json
 
 from sqlalchemy import create_engine, text
 
-from omai.clients.database_schema_client import (
+from umai.clients.database_schema_client import (
     DatabaseSchemaClient,
     OperationalSqlExecutionError,
 )
-from omai.tools.database_schema_tools import build_database_schema_tools
-from omai.tools.operational_sql_validator import (
+from umai.tools.database_schema_tools import build_database_schema_tools
+from umai.tools.operational_sql_validator import (
     OperationalSqlValidationError,
     OperationalSqlValidator,
 )

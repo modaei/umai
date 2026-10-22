@@ -11,11 +11,11 @@ import pytest
 from PIL import Image
 from sqlalchemy import create_engine, text
 
-from omai.rod_pump_health.parameter_trends import (
+from umai.rod_pump_health.parameter_trends import (
     ParameterTrendAnalyzer, SYSTEM_PROMPT,
     PARAMETERS, monitoring_samples, parameter_analyzer_from_settings,
 )
-from omai.rod_pump_health.reader import RodPumpHealthAnalyzer
+from umai.rod_pump_health.reader import RodPumpHealthAnalyzer
 
 
 NOW = datetime(2026, 10, 16, 12, tzinfo=timezone.utc)
@@ -146,8 +146,8 @@ def test_parameter_factory_uses_its_own_prompt_and_separate_reviewer():
         monitoring_data_api_url="http://metrics", data_point_trend_timeout_seconds=20,
     )
     health = SimpleNamespace(engine=None, timezone=ZoneInfo("UTC"))
-    with patch("omai.rod_pump_health.parameter_trends.analyzer_from_settings", return_value=health):
-        with patch("omai.rod_pump_health.parameter_trends.llm_reviewer") as reviewer:
+    with patch("umai.rod_pump_health.parameter_trends.analyzer_from_settings", return_value=health):
+        with patch("umai.rod_pump_health.parameter_trends.llm_reviewer") as reviewer:
             service = parameter_analyzer_from_settings(settings)
             service.reviewer([{"type": "text", "text": "parameters"}])
     reviewer.assert_called_once_with(settings, system_prompt=SYSTEM_PROMPT)
@@ -162,6 +162,30 @@ def test_no_unusual_trends_retains_combined_interpretation(analyzer):
     assert result["interpretation"] == "No unusual monthly trends."
 
 
+@pytest.mark.parametrize("cached", [False, True])
+def test_health_endpoint_skips_all_optional_calls_by_default(monkeypatch, cached):
+    import importlib
+    from umai.rod_pump_health.reader import WellAnalysisRequest
+
+    module = importlib.import_module("umai.api.app")
+    assert module.EXTENDED_HEALTH_ANALYSIS_ENABLED is False
+    health = SimpleNamespace(
+        _well=lambda well_id: {"id": well_id, "site_id": 4},
+        analyze=lambda *args: {"well_id": 23, "review_status": "complete", "unchanged": cached},
+    )
+    monkeypatch.setattr(module, "analyzer_from_settings", lambda _: health)
+    with patch.object(module, "parameter_analyzer_from_settings") as parameters:
+        with patch.object(module, "conclusion_analyzer_from_settings") as conclusion:
+            app = module.create_app()
+            route = next(r for r in app.routes if r.path == "/rod-pump-health-analysis")
+            result = route.endpoint(WellAnalysisRequest(well_id=23))
+    assert result["review_status"] == "complete"
+    assert result["parameter_trends"]["status"] == "disabled"
+    assert result["conclusion"]["status"] == "disabled"
+    parameters.assert_not_called()
+    conclusion.assert_not_called()
+
+
 @pytest.mark.parametrize("card_fails,trend_fails,cached,conclusion_fails", [
     (False, False, False, False), (False, False, True, False),
     (True, False, False, False), (False, True, False, False), (False, False, False, True),
@@ -170,9 +194,10 @@ def test_health_endpoint_reviews_in_order(
     monkeypatch, card_fails, trend_fails, cached, conclusion_fails,
 ):
     import importlib
-    from omai.rod_pump_health.reader import WellAnalysisRequest
+    from umai.rod_pump_health.reader import WellAnalysisRequest
 
-    module = importlib.import_module("omai.api.app")
+    module = importlib.import_module("umai.api.app")
+    monkeypatch.setattr(module, "EXTENDED_HEALTH_ANALYSIS_ENABLED", True)
     calls = []
 
     class CardAnalyzer:

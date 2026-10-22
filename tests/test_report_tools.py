@@ -1,6 +1,6 @@
 import json
 
-from omai.tools.report_tools import build_report_tools
+from umai.tools.report_tools import build_report_tools
 
 
 class FakeReportClient:

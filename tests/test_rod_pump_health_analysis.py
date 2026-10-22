@@ -2,8 +2,8 @@ from datetime import datetime, timedelta, timezone
 import json
 
 import pytest
-from omai.rod_pump_health.analysis import AnalysisRequest, analyze, features, Point, trends
-from omai.rod_pump_health.templates import TEMPLATES, VERSION as TEMPLATE_VERSION
+from umai.rod_pump_health.analysis import AnalysisRequest, analyze, features, Point, trends
+from umai.rod_pump_health.templates import TEMPLATES, VERSION as TEMPLATE_VERSION
 
 
 def test_templates_remove_full_pump_and_like_from_names():
@@ -169,9 +169,9 @@ def test_timezone_required_and_duplicate_ids_rejected():
 
 def test_internal_api_delegates_only_well_id_to_server_analyzer(monkeypatch):
     import importlib
-    from omai.rod_pump_health.reader import WellAnalysisRequest
+    from umai.rod_pump_health.reader import WellAnalysisRequest
 
-    module = importlib.import_module("omai.api.app")
+    module = importlib.import_module("umai.api.app")
     calls = []
 
     class Analyzer:
@@ -429,7 +429,7 @@ def test_current_shape_is_returned_even_without_a_recent_card_anchor():
 
 
 def test_prompt_is_concise_and_allows_domain_reasoning():
-    from omai.rod_pump_health.analysis import SYSTEM_PROMPT
+    from umai.rod_pump_health.analysis import SYSTEM_PROMPT
 
     assert "Lufkin SAM1" in SYSTEM_PROMPT
     assert "without a VFD" in SYSTEM_PROMPT
@@ -537,7 +537,7 @@ def test_short_history_produces_provisional_trends_without_interpolation():
 def test_response_token_usage_normalizes_langchain_and_openai_metadata():
     from types import SimpleNamespace
 
-    from omai.rod_pump_health.analysis import _response_token_usage
+    from umai.rod_pump_health.analysis import _response_token_usage
 
     langchain_response = SimpleNamespace(
         usage_metadata={"input_tokens": 900, "output_tokens": 120, "total_tokens": 1020}
@@ -563,7 +563,7 @@ def test_response_token_usage_normalizes_langchain_and_openai_metadata():
 def test_response_token_usage_normalizes_langchain_and_openai_metadata():
     from types import SimpleNamespace
 
-    from omai.rod_pump_health.analysis import _response_token_usage
+    from umai.rod_pump_health.analysis import _response_token_usage
 
     langchain_response = SimpleNamespace(
         usage_metadata={"input_tokens": 900, "output_tokens": 120, "total_tokens": 1020}

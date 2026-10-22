@@ -6,11 +6,11 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import create_engine, text
 
-from omai.api.app import create_app, is_allowed_client_host
-from omai.api.schemas import ChatRequest, WeeklyOverviewRequest
-from omai.config.settings import Settings
-from omai.repositories.conversation_repository import ConversationRepository
-from omai.services.domain_guard import MAX_CHAT_REQUEST_CHARACTERS, OUT_OF_DOMAIN_RESPONSE
+from umai.api.app import create_app, is_allowed_client_host
+from umai.api.schemas import ChatRequest, RodPumpHealthReportRequest, WeeklyOverviewRequest
+from umai.config.settings import Settings
+from umai.repositories.conversation_repository import ConversationRepository
+from umai.services.domain_guard import MAX_CHAT_REQUEST_CHARACTERS, OUT_OF_DOMAIN_RESPONSE
 
 
 def make_settings() -> Settings:
@@ -34,12 +34,12 @@ def make_settings() -> Settings:
         operational_sql_db_password="readonly-pass",
         operational_sql_max_rows=100,
         operational_sql_timeout_seconds=10,
-        omai_max_concurrent=2,
-        omai_slot_timeout=1,
-        omai_conversation_history_limit=20,
-        omai_conversation_ttl_hours=168,
-        omai_daily_user_limit_enabled=True,
-        omai_daily_user_limit_requests=100,
+        umai_max_concurrent=2,
+        umai_slot_timeout=1,
+        umai_conversation_history_limit=20,
+        umai_conversation_ttl_hours=168,
+        umai_daily_user_limit_enabled=True,
+        umai_daily_user_limit_requests=100,
         timezone="UTC",
         vector_db_host="127.0.0.1",
         vector_db_port=5432,
@@ -576,7 +576,7 @@ def test_chat_endpoint_rejects_when_daily_user_limit_is_reached():
     repository = make_conversation_repository()
     seed_daily_usage(repository, user_id=9, request_count=1)
     app = create_app(
-        settings=replace(make_settings(), omai_daily_user_limit_requests=1),
+        settings=replace(make_settings(), umai_daily_user_limit_requests=1),
         chat_handler=failing_chat_handler,
         conversation_repository=repository,
     )
@@ -611,8 +611,8 @@ def test_chat_endpoint_daily_user_limit_can_be_disabled():
     app = create_app(
         settings=replace(
             make_settings(),
-            omai_daily_user_limit_enabled=False,
-            omai_daily_user_limit_requests=1,
+            umai_daily_user_limit_enabled=False,
+            umai_daily_user_limit_requests=1,
         ),
         chat_handler=fake_chat_handler,
         conversation_repository=repository,
@@ -637,7 +637,7 @@ def test_chat_endpoint_daily_user_limit_is_scoped_by_site():
     repository = make_conversation_repository()
     seed_daily_usage(repository, user_id=9, site_id=4, request_count=1)
     app = create_app(
-        settings=replace(make_settings(), omai_daily_user_limit_requests=1),
+        settings=replace(make_settings(), umai_daily_user_limit_requests=1),
         chat_handler=fake_chat_handler,
         conversation_repository=repository,
     )
@@ -809,8 +809,35 @@ def test_app_registers_chat_and_health_routes():
 
     assert route_endpoint(app, "/chat", "POST")
     assert route_endpoint(app, "/health", "GET")
-    assert not any(route.path == "/rod-pump-health-report" for route in app.routes)
+    assert route_endpoint(app, "/rod-pump-health-report", "POST")
     assert route_endpoint(app, "/weekly-overview", "POST")
+
+
+def test_rod_pump_report_endpoint_bypasses_conversation_storage():
+    repository = make_conversation_repository()
+    calls = []
+
+    def report_handler(settings, site_id, as_of_time, well_ids):
+        calls.append((site_id, as_of_time, well_ids))
+        return {"site_id": site_id, "wells": []}
+
+    app = create_app(
+        settings=make_settings(),
+        chat_handler=failing_chat_handler,
+        conversation_repository=repository,
+        rod_pump_report_handler=report_handler,
+    )
+    endpoint = route_endpoint(app, "/rod-pump-health-report", "POST")
+    result = endpoint(RodPumpHealthReportRequest.model_validate({
+        "site_id": 4,
+        "well_ids": [10, 10, 11],
+        "as_of_time": "2026-07-06T08:00:00Z",
+    }))
+
+    assert result == {"site_id": 4, "wells": []}
+    assert calls == [(4, "2026-07-06T08:00:00+00:00", [10, 11])]
+    with repository.engine.connect() as connection:
+        assert connection.execute(text("SELECT COUNT(*) FROM ai_conversations")).scalar_one() == 0
 
 
 def test_weekly_overview_endpoint_bypasses_conversation_storage():

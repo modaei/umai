@@ -5,7 +5,7 @@ import httpx
 import pytest
 from sqlalchemy import create_engine, text
 
-from omai.rod_pump_health.reader import RodPumpHealthAnalyzer, physical_points
+from umai.rod_pump_health.reader import RodPumpHealthAnalyzer, physical_points
 
 
 def surface_points():
@@ -201,8 +201,8 @@ def test_unit_conversion_and_bad_curves_are_not_partially_repaired():
 
 
 def test_selected_archive_card_resolves_even_without_baseline_reason(analyzer, monkeypatch):
-    from omai.rod_pump_health.reader import RecentCardReference
-    import omai.rod_pump_health.reader as reader
+    from umai.rod_pump_health.reader import RecentCardReference
+    import umai.rod_pump_health.reader as reader
 
     class Clock(datetime):
         @classmethod
@@ -238,8 +238,8 @@ def test_selected_archive_card_resolves_even_without_baseline_reason(analyzer, m
 
 
 def test_recent_reference_cannot_cross_wells_or_lie_about_pumping_window(analyzer, monkeypatch):
-    from omai.rod_pump_health.reader import RecentCardReference
-    import omai.rod_pump_health.reader as reader
+    from umai.rod_pump_health.reader import RecentCardReference
+    import umai.rod_pump_health.reader as reader
 
     class Clock(datetime):
         @classmethod
@@ -270,8 +270,8 @@ def test_recent_reference_cannot_cross_wells_or_lie_about_pumping_window(analyze
 def test_live_reference_reads_its_linked_pull_and_survives_exact_archive_fallback(
     analyzer, monkeypatch
 ):
-    from omai.rod_pump_health.reader import RecentCardReference
-    import omai.rod_pump_health.reader as reader
+    from umai.rod_pump_health.reader import RecentCardReference
+    import umai.rod_pump_health.reader as reader
 
     class Clock(datetime):
         @classmethod

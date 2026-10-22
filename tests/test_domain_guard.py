@@ -1,4 +1,4 @@
-from omai.services.domain_guard import (
+from umai.services.domain_guard import (
     MAX_CHAT_REQUEST_CHARACTERS,
     OUT_OF_DOMAIN_RESPONSE,
     assess_request_integrity,

@@ -1,19 +1,19 @@
 import json
 from pathlib import Path
 
-from omai.config.settings import Settings
+from umai.config.settings import Settings
 import pytest
 
-from omai.evals.cases import EvaluationCaseError, filter_cases, load_cases
-from omai.evals.checks import run_deterministic_checks
-from omai.evals.models import EvaluationCase, EvaluationResult, MetricResult
-from omai.evals.runner import (
+from umai.evals.cases import EvaluationCaseError, filter_cases, load_cases
+from umai.evals.checks import run_deterministic_checks
+from umai.evals.models import EvaluationCase, EvaluationResult, MetricResult
+from umai.evals.runner import (
     _configure_deepeval_environment,
     _evaluate_case,
     _report_payload,
     _write_report,
 )
-from omai.services.domain_guard import OUT_OF_DOMAIN_RESPONSE
+from umai.services.domain_guard import OUT_OF_DOMAIN_RESPONSE
 
 
 def test_load_cases_parses_json_file(tmp_path: Path):
@@ -315,7 +315,7 @@ def test_write_report_outputs_json(tmp_path: Path):
     path = _write_report([result], tmp_path)
     payload = json.loads(path.read_text(encoding="utf-8"))
 
-    assert path.name.startswith("omai-eval-")
+    assert path.name.startswith("umai-eval-")
     assert payload["passed"] == 0
     assert payload["total"] == 1
     assert payload["results"][0]["case"] == {"id": "case-1", "question": "q"}
@@ -404,8 +404,8 @@ def test_evaluate_case_skips_metrics_for_deterministic_case(monkeypatch):
     def fail_if_called(*_args, **_kwargs):
         raise AssertionError("DeepEval metrics should not run for deterministic cases")
 
-    monkeypatch.setattr("omai.evals.runner.answer_chat", fake_answer_chat)
-    monkeypatch.setattr("omai.evals.runner.run_deepeval_metrics", fail_if_called)
+    monkeypatch.setattr("umai.evals.runner.answer_chat", fake_answer_chat)
+    monkeypatch.setattr("umai.evals.runner.run_deepeval_metrics", fail_if_called)
 
     result = _evaluate_case(
         settings,
@@ -432,8 +432,8 @@ def test_evaluate_case_runs_metrics_for_non_deterministic_case(monkeypatch):
     def fake_metrics(*_args, **_kwargs):
         return [metric]
 
-    monkeypatch.setattr("omai.evals.runner.answer_chat", fake_answer_chat)
-    monkeypatch.setattr("omai.evals.runner.run_deepeval_metrics", fake_metrics)
+    monkeypatch.setattr("umai.evals.runner.answer_chat", fake_answer_chat)
+    monkeypatch.setattr("umai.evals.runner.run_deepeval_metrics", fake_metrics)
 
     result = _evaluate_case(
         settings,
@@ -480,12 +480,12 @@ def make_settings() -> Settings:
         operational_sql_db_password="readonly-pass",
         operational_sql_max_rows=100,
         operational_sql_timeout_seconds=10,
-        omai_max_concurrent=2,
-        omai_slot_timeout=1,
-        omai_conversation_history_limit=20,
-        omai_conversation_ttl_hours=168,
-        omai_daily_user_limit_enabled=True,
-        omai_daily_user_limit_requests=100,
+        umai_max_concurrent=2,
+        umai_slot_timeout=1,
+        umai_conversation_history_limit=20,
+        umai_conversation_ttl_hours=168,
+        umai_daily_user_limit_enabled=True,
+        umai_daily_user_limit_requests=100,
         timezone="UTC",
         vector_db_host="127.0.0.1",
         vector_db_port=5432,

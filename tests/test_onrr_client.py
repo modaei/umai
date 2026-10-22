@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine, text
 
-from omai.clients.onrr_client import OnrrClient, OnrrClientError
+from umai.clients.onrr_client import OnrrClient, OnrrClientError
 
 
 def make_onrr_client() -> OnrrClient:

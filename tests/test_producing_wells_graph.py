@@ -4,7 +4,7 @@ from datetime import date
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 
-from omai.agents.producing_wells_graph import (
+from umai.agents.producing_wells_graph import (
     prepare_well_population_dependency,
     try_answer_producing_well_question,
 )

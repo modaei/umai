@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine, text
 
-from omai.clients.well_timeline_client import (
+from umai.clients.well_timeline_client import (
     UnavailableWellTimelineClient,
     WellTimelineClient,
     WellTimelineClientError,
