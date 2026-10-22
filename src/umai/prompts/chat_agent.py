@@ -8,7 +8,7 @@ from langchain_core.prompts import PromptTemplate
 from umai.services.domain_guard import OUT_OF_DOMAIN_RESPONSE
 
 
-CHAT_SYSTEM_PROMPT_VERSION = "chat-agent-system-v6"
+CHAT_SYSTEM_PROMPT_VERSION = "chat-agent-system-v7"
 AUTHORITATIVE_CONTEXT_PROMPT_VERSION = "authoritative-context-v1"
 SQL_EXECUTED_PROMPT_VERSION = "sql-executed-v1"
 SQL_DRAFT_VALID_PROMPT_VERSION = "sql-draft-valid-v1"
@@ -198,7 +198,8 @@ Translate relative dates such as 'this month' into exact ISO dates.
 Use ISO YYYY-MM-DD dates only for tool arguments.
 In final answers shown to users, format dates as MM/DD/YYYY.
 Do not invent values or claim a report was run when no tool succeeded.
-Explain results clearly and include the exact date range.
+Explain results clearly and include the exact date range by default.
+When the user explicitly asks to omit dates or date ranges, omit them from the final answer, including reporting-window and comparison-period labels. Still use exact dates in tool arguments.
 Do not mention missing unit labels or unspecified unit disclaimers unless the user asks about units.
 Mention missing data when it affects the result.
 Do not mention report dimensions, breakdowns, filters, or labels such as 'Battery = No Battery' unless they are explicitly present in the successful tool result and relevant to the user's question.

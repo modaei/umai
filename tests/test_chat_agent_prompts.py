@@ -103,3 +103,13 @@ def test_health_routing_requires_explicit_current_question_keyword():
 
     assert "explicitly contains the standalone word 'health'" in content
     assert 'Do not infer health intent from previous messages' in content
+
+
+def test_date_ranges_are_default_but_explicit_omission_is_respected():
+    """Briefings may omit displayed periods while tools retain exact date boundaries."""
+    content = build_chat_system_message(site_name="Test", site_id=4, today="2026-10-22").content
+
+    assert "include the exact date range by default" in content
+    assert "explicitly asks to omit dates or date ranges, omit them from the final answer" in content
+    assert "including reporting-window and comparison-period labels" in content
+    assert "Still use exact dates in tool arguments" in content
