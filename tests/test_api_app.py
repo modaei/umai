@@ -874,3 +874,31 @@ def test_weekly_overview_request_rejects_reversed_dates():
             "start_date": "2026-07-01",
             "end_date": "2026-06-24",
         })
+
+
+def test_dashboard_briefing_never_accesses_conversation_storage():
+    """Internal generation uses empty history and needs no user repository."""
+    from umai.api.schemas import DashboardBriefingRequest
+
+    class ForbiddenRepository:
+        def __getattr__(self, name):
+            raise AssertionError(f"Unexpected conversation access: {name}")
+
+    def handler(settings, site_id, site_name, history, question, response_mode):
+        assert site_id == 42
+        assert history == []
+        assert "2026-10-17 through 2026-10-23 (inclusive)" in question
+        assert "Plain text, at most 65 words." in question
+        assert response_mode == "fast"
+        return " Shared briefing. ", [], {}
+
+    app = create_app(
+        settings=make_settings(), chat_handler=handler,
+        conversation_repository=ForbiddenRepository(),
+    )
+    endpoint = next(route.endpoint for route in app.routes if route.path == "/dashboard-briefing")
+    payload = DashboardBriefingRequest(
+        site_id=42, date="2026-10-24",
+    )
+    assert endpoint(payload).model_dump() == {"answer": "Shared briefing."}
+    assert endpoint(payload).answer == "Shared briefing."

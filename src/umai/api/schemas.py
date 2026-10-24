@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Literal
 from uuid import UUID
 from datetime import date, datetime
+from datetime import date as Date
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -81,3 +82,18 @@ class WeeklyOverviewRequest(BaseModel):
 
 class WeeklyOverviewResponse(BaseModel):
     overview: str = Field(min_length=1)
+
+
+class DashboardBriefingRequest(BaseModel):
+    """Internal stateless generation request with site context only."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    site_id: int = Field(gt=0)
+    date: Date
+
+
+class DashboardBriefingResponse(BaseModel):
+    """Generated text with no conversation or message identifiers."""
+
+    answer: str = Field(min_length=1)

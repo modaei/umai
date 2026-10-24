@@ -17,6 +17,8 @@ from umai.rod_pump_health.parameter_trends import (
 )
 
 from umai.api.schemas import (
+    DashboardBriefingRequest,
+    DashboardBriefingResponse,
     ChatRequest,
     ChatResponse,
     RodPumpHealthReportRequest,
@@ -36,6 +38,7 @@ from umai.repositories.daily_usage_repository import (
 from umai.config.logging import configure_logging
 from umai.config.settings import Settings
 from umai.services.chat_service import answer_chat
+from umai.services.dashboard_briefing_service import build_dashboard_briefing_prompt
 from umai.services.domain_guard import (
     OUT_OF_DOMAIN_RESPONSE,
     assess_request_integrity,
@@ -155,6 +158,27 @@ def create_app(
             raise HTTPException(status_code=503, detail="Rod-pump health analysis failed") from exc
         finally:
             app.state.dynograph_slots.release()
+
+    @app.post("/dashboard-briefing", response_model=DashboardBriefingResponse)
+    def dashboard_briefing(payload: DashboardBriefingRequest) -> DashboardBriefingResponse:
+        """Generate shared site text without accessing conversation or user-usage storage."""
+        if not app.state.chat_slots.acquire(timeout=settings.umai_slot_timeout):
+            raise HTTPException(status_code=503, detail="UMAI service is busy")
+        try:
+            message = build_dashboard_briefing_prompt(payload.date)
+            args = (settings, payload.site_id, None, [], message, "fast")
+            if app.state.chat_handler is answer_chat:
+                answer, _, _ = app.state.chat_handler(
+                    *args, current_date=payload.date.isoformat(),
+                )
+            else:
+                answer, _, _ = app.state.chat_handler(*args)
+            return DashboardBriefingResponse(answer=answer.strip())
+        except Exception as exc:
+            logger.exception("Dashboard briefing generation failed")
+            raise HTTPException(status_code=503, detail="Dashboard briefing generation failed") from exc
+        finally:
+            app.state.chat_slots.release()
 
     @app.post("/chat", response_model=ChatResponse)
     def chat(payload: ChatRequest) -> ChatResponse:
