@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from sqlalchemy import create_engine, text
 
-from omai.rod_pump_health.conclusion import ConclusionAnalyzer, historical_findings
+from umai.rod_pump_health.conclusion import ConclusionAnalyzer, historical_findings
 
 
 @pytest.fixture

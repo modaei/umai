@@ -5,7 +5,7 @@ from sqlalchemy import create_engine, text
 
 import pytest
 
-from omai.clients.rod_pump_analysis_client import (
+from umai.clients.rod_pump_analysis_client import (
     RodPumpAnalysisClient,
     RodPumpAnalysisError,
 )

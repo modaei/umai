@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import create_engine, text
 
-from omai.clients.data_point_client import DataPointClient
+from umai.clients.data_point_client import DataPointClient
 
 
 def make_client() -> DataPointClient:
@@ -395,7 +395,7 @@ def test_broad_queries_filter_devices_and_keep_per_device_point_matching():
 
 def test_value_scope_validation_rejects_empty_or_conflicting_selectors():
     import pytest
-    from omai.clients.data_point_client import DataPointClientError
+    from umai.clients.data_point_client import DataPointClientError
 
     client = make_client()
     for arguments in (
@@ -419,8 +419,8 @@ def test_no_match_and_empty_site_return_no_values():
 
 
 def test_value_tool_exposes_new_scopes_and_returns_structured_errors():
-    from omai.tools.data_point_tools import build_data_point_tools
-    from omai.clients.data_point_client import UnavailableDataPointClient
+    from umai.tools.data_point_tools import build_data_point_tools
+    from umai.clients.data_point_client import UnavailableDataPointClient
 
     tool = build_data_point_tools(make_client(), site_id=1)[0]
     for arguments, count in (

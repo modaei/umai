@@ -3,12 +3,12 @@ from datetime import date
 from langchain_core.messages import AIMessage
 from langchain_core.tools import tool
 
-from omai.agents.chat_agent import (
+from umai.agents.chat_agent import (
     answer_chat_question,
     build_model,
     reasoning_effort_for_response_mode,
 )
-from omai.services.domain_guard import OUT_OF_DOMAIN_RESPONSE
+from umai.services.domain_guard import OUT_OF_DOMAIN_RESPONSE
 
 
 class FakeModel:

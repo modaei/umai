@@ -3,7 +3,7 @@ import json
 import httpx
 import pytest
 
-from omai.clients.report_client import ReportClient, ReportClientError
+from umai.clients.report_client import ReportClient, ReportClientError
 
 
 def make_client(max_report_days: int = 366) -> ReportClient:

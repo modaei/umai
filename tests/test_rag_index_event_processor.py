@@ -1,7 +1,7 @@
 import logging
 
-from omai.rag.process_index_events import RagIndexEventProcessor
-from omai.repositories.rag_index_event_repository import RagIndexEvent
+from umai.rag.process_index_events import RagIndexEventProcessor
+from umai.repositories.rag_index_event_repository import RagIndexEvent
 
 
 class FakeRepository:

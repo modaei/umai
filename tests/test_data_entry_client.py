@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine, text
 
-from omai.clients.data_entry_client import DataEntryClient
+from umai.clients.data_entry_client import DataEntryClient
 
 
 def make_client():

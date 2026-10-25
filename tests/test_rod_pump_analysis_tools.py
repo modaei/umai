@@ -1,7 +1,7 @@
 import json
 
-from omai.clients.rod_pump_analysis_client import RodPumpAnalysisError
-from omai.tools.rod_pump_analysis_tools import build_rod_pump_analysis_tools
+from umai.clients.rod_pump_analysis_client import RodPumpAnalysisError
+from umai.tools.rod_pump_analysis_tools import build_rod_pump_analysis_tools
 
 
 class Client:

@@ -2,8 +2,8 @@ import json
 
 from sqlalchemy import create_engine, text
 
-from omai.api.app import _view_intent
-from omai.clients.view_navigation_client import ViewNavigationClient
+from umai.api.app import _view_intent
+from umai.clients.view_navigation_client import ViewNavigationClient
 
 
 def make_client():

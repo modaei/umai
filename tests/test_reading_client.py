@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import create_engine, text
 
-from omai.clients.reading_client import (
+from umai.clients.reading_client import (
     ReadingClient,
     ReadingClientError,
     UnavailableReadingClient,

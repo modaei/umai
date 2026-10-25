@@ -1,6 +1,6 @@
 import json
 
-from omai.tools.onrr_tools import build_onrr_tools
+from umai.tools.onrr_tools import build_onrr_tools
 
 
 class FakeOnrrClient:

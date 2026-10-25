@@ -1,7 +1,7 @@
 import json
 from datetime import date
 
-from omai.services.weekly_overview_service import (
+from umai.services.weekly_overview_service import (
     WeeklyOverviewService,
     _change_summary,
     _previous_period,

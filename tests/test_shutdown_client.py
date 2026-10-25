@@ -3,7 +3,7 @@ from datetime import date, datetime
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import StaticPool
 
-from omai.clients.shutdown_client import (
+from umai.clients.shutdown_client import (
     DOWNTIME_CODES,
     ShutdownClient,
     ShutdownClientError,

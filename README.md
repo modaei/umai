@@ -1,25 +1,25 @@
-# Omai
+# UMAI
 
 Ometrics is an oil-field operations platform used to monitor, control, and
 report production data. It tracks field readings, tanks, wells, shutdowns,
 alarms, work orders, notes, emails, and production reports across a selected
 site.
 
-Omai is the read-only AI agent for Ometrics. It interprets oil-field operations 
+UMAI is the read-only AI agent for Ometrics. It interprets oil-field operations 
 questions, chooses the appropriate tool or data path, retrieves the required 
 operational context, and produces grounded answers from the retrieved data. 
 The agent is built with LangChain, LangGraph and an OpenAI-compatible chat
-model, and it can call Ometrics, Omreports, RAG, and validated SQL tools
+model, and it can call Ometrics, UMreports, RAG, and validated SQL tools
 depending on the user's request.
 
-The Ometrics application uses Omai through a local FastAPI `/chat`
-endpoint. Omai is not intended to run independently. It is an AI agent layer
-for an existing Ometrics deployment, with Ometrics and Omreports remaining the
+The Ometrics application uses UMAI through a local FastAPI `/chat`
+endpoint. UMAI is not intended to run independently. It is an AI agent layer
+for an existing Ometrics deployment, with Ometrics and UMreports remaining the
 systems of record.
 
 ## Responsibilities
 
-Omai is responsible for:
+UMAI is responsible for:
 
 - Receiving chat requests from Ometrics and maintaining server-side
   conversation history by `conversation_id`, `user_id`, and `site_id`.
@@ -29,7 +29,7 @@ Omai is responsible for:
 - Acting as a tool-using operational agent: interpreting user intent, selecting
   the best available tool, passing scoped arguments, and synthesizing the result
   into a user-facing answer.
-- Running Omreports functions for report questions, including production,
+- Running UMreports functions for report questions, including production,
   sales, gas, water, injection, allocation, and monthly battery summaries.
 - Reading Ometrics MySQL data for raw readings, missing readings, comparisons,
   tank volumes, well shutdowns, shutdown-cause summaries, current long
@@ -43,27 +43,27 @@ Omai is responsible for:
   indexing, embedded, and stored in a Postgres + pgvector index.
 - Producing answers grounded in retrieved operational data, tool results, and
   curated Ometrics capability guidance.
-- Enforcing read-only behavior. Omai can retrieve and summarize data, and it can
+- Enforcing read-only behavior. UMAI can retrieve and summarize data, and it can
   prepare navigation to existing Ometrics forms where supported, but it does not
   create records, update records, send emails, acknowledge alarms, control
   equipment, or export files.
 
 ## Runtime Dependencies
 
-Omai is not a standalone application. It is designed to run as part of the
+UMAI is not a standalone application. It is designed to run as part of the
 Ometrics software bundle.
 
 At runtime it depends on:
 
 - Ometrics MySQL database for site data, readings, shutdowns, notes, alarms,
   well history, and conversation storage.
-- Omreports service for calculated production, sales, gas, water, injection,
+- UMreports service for calculated production, sales, gas, water, injection,
   allocation, and battery reports.
 - A configured LLM provider through an OpenAI-compatible API.
 - Postgres + pgvector for operational-text RAG, if RAG questions should be
   supported.
 
-Without the Ometrics database and Omreports service, Omai can start, but most
+Without the Ometrics database and UMreports service, UMAI can start, but most
 domain tools will be unavailable or return errors.
 
 ## Architecture
@@ -75,10 +75,10 @@ domain tools will be unavailable or return errors.
   final answer.
 - Deterministic routing handles common high-confidence workflows before a full
   LLM tool-selection loop is needed.
-- `omreports` remains the source for calculated report results.
+- `umreports` remains the source for calculated report results.
 - Ometrics MySQL remains the source of operational records.
 - Postgres + pgvector stores the derived operational-text vector index.
-- Conversation messages are stored in the Ometrics database through Omai's
+- Conversation messages are stored in the Ometrics database through UMAI's
   conversation repository.
 
 Typical flow:
@@ -87,13 +87,13 @@ Typical flow:
 Ometrics chat request
         │
         ▼
-Omai AI agent
+UMAI AI agent
         │
         ├─ deterministic router, when a safe direct path exists
         └─ LangChain LLM tool-selection loop
                  │
                  ▼
-        Ometrics / Omreports / RAG / validated SQL tools
+        Ometrics / UMreports / RAG / validated SQL tools
                  │
                  ▼
         grounded final answer returned to Ometrics
@@ -114,7 +114,7 @@ and SQL audit records, is stored in `ai_messages.info`.
 
 ## Setup
 
-Run the following Omai commands from the Omai repository root. Create a virtual
+Run the following UMAI commands from the UMAI repository root. Create a virtual
 environment and install dependencies:
 
 ```bash
@@ -127,7 +127,7 @@ cp .env.example .env
 
 Set the LLM provider values in `.env`.
 
-Set `LOG_LEVEL` to control Omai logging across the API, CLI commands, and RAG
+Set `LOG_LEVEL` to control UMAI logging across the API, CLI commands, and RAG
 event processor. Supported values are:
 
 ```bash
@@ -167,7 +167,7 @@ DB_NAME=ometrics
 ```
 
 For direct operational SQL, configure a separate database user that has only
-`SELECT` privileges on the allowlisted operational tables. Omai also validates
+`SELECT` privileges on the allowlisted operational tables. UMAI also validates
 SQL shape, table names, columns, site scoping, and row limits before execution,
 but database permissions are the final safety boundary:
 
@@ -178,24 +178,24 @@ OPERATIONAL_SQL_MAX_ROWS=100
 OPERATIONAL_SQL_TIMEOUT_SECONDS=10
 ```
 
-Configure Omreports:
+Configure UMreports:
 
 ```bash
-OMREPORTS_API_URL=http://127.0.0.1:50008/report/
+UMREPORTS_API_URL=http://127.0.0.1:50008/report/
 MONITORING_DATA_API_URL=http://metrics1.ultimatesys.com/render
 ROD_PUMP_TIMEOUT_SECONDS=20
 ROD_PUMP_MAX_DATA_POINTS=96
 ROD_PUMP_BATCH_WORKERS=2
 # Leave unset until a paraffin model passes the validation gate.
 ROD_PUMP_MODEL_METADATA=
-OMREPORTS_TIMEOUT_SECONDS=30
+UMREPORTS_TIMEOUT_SECONDS=30
 MAX_REPORT_DAYS=366
 ```
 
 ## Operational RAG
 
 Operational-text RAG uses a derived vector index backed by Postgres + pgvector.
-Omai reads source records from MySQL and writes only the normalized chunks and
+UMAI reads source records from MySQL and writes only the normalized chunks and
 embeddings to the vector database.
 
 Configure the vector database:
@@ -220,8 +220,8 @@ CREATE EXTENSION vector;
 Then create/update the vector schema and index operational text:
 
 ```bash
-omai-vector-db-migrate
-omai-index-operational-text --site-id 4 --from-date 2026-01-01 --reset-site
+umai-vector-db-migrate
+umai-index-operational-text --site-id 4 --from-date 2026-01-01 --reset-site
 ```
 
 The indexer includes general notes, chart notes, work orders and notes,
@@ -229,34 +229,34 @@ shutdown comments, downtime codes, well-test comments, reading comments, alarm
 logs, and well history records.
 
 Ometrics keeps this index current by writing model-change events into the shared
-`ai_rag_index_events` MySQL outbox table. Run `omai-process-rag-index-events`
+`ai_rag_index_events` MySQL outbox table. Run `umai-process-rag-index-events`
 from cron or a systemd timer every few minutes; each run takes a MySQL lock,
 processes currently due events, deletes successful rows, and exits. A nightly
-cron job can also call the `omai-index-operational-text` command directly for
+cron job can also call the `umai-index-operational-text` command directly for
 rolling repair refreshes.
 
 ## Running Services
 
-Start Omreports. The Ometrics software bundle keeps the Omreports repository
-next to the Omai repository:
+Start UMreports. The Ometrics software bundle keeps the UMreports repository
+next to the UMAI repository:
 
 ```bash
 source venv/bin/activate
 python3 -m uvicorn api:app --host 127.0.0.1 --port 50008
 ```
 
-Start Omai API for Ometrics:
+Start UMAI API for Ometrics:
 
 ```bash
 source .venv/bin/activate
-python3 -m uvicorn omai.api.app:app --host 127.0.0.1 --port 50009
+python3 -m uvicorn umai.api.app:app --host 127.0.0.1 --port 50009
 ```
 
-Process queued Omai RAG index events periodically:
+Process queued UMAI RAG index events periodically:
 
 ```bash
 source .venv/bin/activate
-omai-process-rag-index-events
+umai-process-rag-index-events
 ```
 
 ## Example Questions
@@ -280,37 +280,37 @@ pytest -q
 ```
 
 The unit tests use fakes and in-memory databases where possible. They do not
-require a live LLM API, Omreports service, MySQL database, or vector database.
+require a live LLM API, UMreports service, MySQL database, or vector database.
 
 ## Local Evaluation
 
-Omai includes a developer-only live evaluation command:
+UMAI includes a developer-only live evaluation command:
 
 ```bash
 pip install ".[dev]"
-omai-evaluate
+umai-evaluate
 ```
 
-This command uses the real local Omai configuration: the configured Omai LLM for
-answers, Ometrics MySQL database, Omreports service, operational SQL user, and
-Postgres + pgvector RAG index. For DeepEval judge calls, Omai maps `LLM_API_KEY`
+This command uses the real local UMAI configuration: the configured UMAI LLM for
+answers, Ometrics MySQL database, UMreports service, operational SQL user, and
+Postgres + pgvector RAG index. For DeepEval judge calls, UMAI maps `LLM_API_KEY`
 and `LLM_BASE_URL` into OpenAI-compatible environment variables when they are not
 already set. It is not part of normal CI and may consume LLM/API credits.
 
 Useful filters:
 
 ```bash
-omai-evaluate --limit 3
-omai-evaluate --category rag
-omai-evaluate --case-id report-gas-flared-may-2026
-omai-evaluate --failed-only
+umai-evaluate --limit 3
+umai-evaluate --category rag
+umai-evaluate --case-id report-gas-flared-may-2026
+umai-evaluate --failed-only
 ```
 
 Use `--current-date YYYY-MM-DD` to supply a default date for cases that do not
 define `current_date`. If a case defines `current_date`, the case value wins.
 
-Before running cases, the command validates local DB, vector DB, and Omreports
-connectivity. Results are written to `eval-results/omai-eval-*.json`. Each result
+Before running cases, the command validates local DB, vector DB, and UMreports
+connectivity. Results are written to `eval-results/umai-eval-*.json`. Each result
 contains only:
 
 - `case.id` and `case.question`
@@ -328,7 +328,7 @@ Use `--failed-only` when running larger suites if the report file should include
 only failed cases. The top-level `passed` and `total` counts still refer to all
 evaluated cases; only the `results` array is filtered.
 
-Evaluation cases live in `src/omai/evals/cases/core.json`. Important fields:
+Evaluation cases live in `src/umai/evals/cases/core.json`. Important fields:
 
 - `expected_tool_calls`: verifies both the tool name and selected argument
   values. This replaces the older `required_tools` style check.
