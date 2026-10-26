@@ -636,7 +636,7 @@ SYSTEM_PROMPT = (
 )
 
 
-def llm_reviewer(settings, system_prompt=SYSTEM_PROMPT):
+def llm_reviewer(settings, system_prompt=SYSTEM_PROMPT, max_tokens=None):
     """Use the configured model's native structured response and image input."""
     from langchain_openai import ChatOpenAI
     from langchain_core.messages import HumanMessage, SystemMessage
@@ -647,6 +647,7 @@ def llm_reviewer(settings, system_prompt=SYSTEM_PROMPT):
         base_url=settings.llm_base_url,
         timeout=150,
         max_retries=0,
+        max_tokens=max_tokens,
     )
     structured = model.bind(response_format={"type": "json_object"})
 

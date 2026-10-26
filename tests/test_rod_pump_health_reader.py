@@ -113,13 +113,13 @@ def test_well_id_resolves_site_and_retrieves_both_card_sides(analyzer):
     assert len(result["input_cards"]) == 14
     assert result["input_cards"][0]["surface"][20]["position"] == 100
     assert result["input_cards"][0]["downhole"][20]["position"] == 100
-    assert result["status"] == "partial"  # No recent card was selected by UMetriqs.
+    assert result["status"] == "complete"  # Latest baseline supplies the local fallback.
     assert calls["report"][0]["site_id"] == 4
     assert calls["report"][0]["params"]["surface_cards"][0]["id"] == "archive:1"
-    assert calls["review"] == 1
+    assert calls["review"] == 0
 
 
-def test_unchanged_saved_result_skips_llm_but_changed_source_reanalyzes(analyzer):
+def test_local_result_reuses_cache_and_never_calls_llm(analyzer):
     service, calls = analyzer
     first = service.analyze(23)
     with service.engine.begin() as connection:
@@ -131,7 +131,7 @@ def test_unchanged_saved_result_skips_llm_but_changed_source_reanalyzes(analyzer
             },
         )
     assert service.analyze(23)["unchanged"] is True
-    assert calls["review"] == 1
+    assert calls["review"] == 0
     points = surface_points()
     points[5]["load"] = 25
     with service.archive_engine.begin() as connection:
@@ -140,7 +140,7 @@ def test_unchanged_saved_result_skips_llm_but_changed_source_reanalyzes(analyzer
             {"points": json.dumps(points)},
         )
     assert service.analyze(23)["unchanged"] is False
-    assert calls["review"] == 2
+    assert calls["review"] == 0
 
 
 def test_downhole_failure_preserves_surface_analysis(analyzer):
@@ -232,8 +232,8 @@ def test_selected_archive_card_resolves_even_without_baseline_reason(analyzer, m
     assert len(result["input_cards"]) == 15
     assert result["input_cards"][-1]["reference"] == "archive:99"
     assert result["input_cards"][-1]["roles"] == ["recent"]
-    assert result["measurements"]["surface"]["trends"]["valid_cards"] == 14
-    assert calls["review"] == 1
+    assert result["matched_cards"]["surface"] == "archive:99"
+    assert calls["review"] == 0
     assert result["status"] == "complete"
 
 
@@ -339,3 +339,23 @@ def test_live_reference_reads_its_linked_pull_and_survives_exact_archive_fallbac
     recovered = service.analyze(23, reference)
     assert recovered["input_cards"][-1]["reference"] == "archive:99"
     assert recovered["status"] == "complete"
+
+
+def test_previous_matcher_version_is_not_reused(analyzer):
+    import hashlib
+
+    service, calls = analyzer
+    packet, _, _ = service.prepare(23)
+    old_signature = hashlib.sha256(json.dumps(
+        [packet.model_dump(mode="json"), "local-dynograph-matching-v1", "dynograph-templates-v2"],
+        sort_keys=True,
+    ).encode()).hexdigest()
+    with service.engine.begin() as connection:
+        connection.execute(text("INSERT INTO rod_pump_health_analyses VALUES(23,:signature,:findings)"), {
+            "signature": old_signature,
+            "findings": json.dumps({"review_status": "complete", "matching_method": "local-dynograph-matching-v1"}),
+        })
+    result = service.analyze(23)
+    assert result["unchanged"] is False
+    assert result["matching_method"] == "local-dynograph-matching-v11"
+    assert calls["review"] == 0

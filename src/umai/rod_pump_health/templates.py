@@ -1,6 +1,6 @@
 """Versioned, illustrative references; these sketches are not field measurements."""
 
-VERSION = "dynograph-templates-v2"
+VERSION = "dynograph-templates-v3"
 PDF_SOURCE = "Downhole Dynamometer Card Guide and Card Review, supplied October 2026, section 2"
 ECHOMETER = "https://www.echometer.com/technical-papers"
 
@@ -18,6 +18,15 @@ def template(key, side, title, points, features, alternatives, source):
 
 
 TEMPLATES = [
+    template(
+        "dh_full",
+        "downhole",
+        "Healthy pump",
+        [[0, 0], [0.06, 1], [0.94, 1], [1, 0], [0, 0]],
+        "Flat top and bottom with crisp corners; valves open and close cleanly.",
+        "A healthy shape match is a similarity assessment, not confirmation of every operating condition.",
+        "User-supplied Healthy pump reference image",
+    ),
     template(
         "dh_fluid_pound",
         "downhole",

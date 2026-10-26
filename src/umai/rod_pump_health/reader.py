@@ -16,7 +16,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
 
-from umai.rod_pump_health.analysis import AnalysisRequest, VERSION, analyze, llm_reviewer
+from umai.rod_pump_health.analysis import AnalysisRequest, llm_reviewer
+from umai.rod_pump_health.matching import VERSION, analyze_local
 from umai.rod_pump_health.templates import VERSION as TEMPLATE_VERSION
 
 
@@ -342,7 +343,7 @@ class RodPumpHealthAnalyzer:
         return AnalysisRequest(site_id=well["site_id"], well_id=well_id, cards=packet_cards), start, end
 
     def analyze(self, well_id, recent_card=None):
-        """Read source data, reuse an unchanged saved review, or return a new result for persistence."""
+        """Read cards and cache local shape matches without calling an LLM."""
         packet, start, end = self.prepare(well_id, recent_card)
         signature = hashlib.sha256(
             json.dumps(
@@ -372,7 +373,7 @@ class RodPumpHealthAnalyzer:
             findings = decoded(saved["findings"], {})
             if isinstance(findings, dict) and findings.get("review_status") == "complete":
                 return {**metadata, "unchanged": True, "review_status": "complete"}
-        result = analyze(packet, self.reviewer)
+        result = analyze_local(packet)
         return {
             **result,
             **metadata,

@@ -6,13 +6,13 @@ from umai.rod_pump_health.analysis import AnalysisRequest, analyze, features, Po
 from umai.rod_pump_health.templates import TEMPLATES, VERSION as TEMPLATE_VERSION
 
 
-def test_templates_remove_full_pump_and_like_from_names():
+def test_templates_include_healthy_downhole_without_like_in_names():
     names = [template["title"] for template in TEMPLATES]
 
-    assert len(names) == 11
+    assert len(names) == 12
     assert all("like" not in name.lower() for name in names)
-    assert all(template["id"] != "dh_full" for template in TEMPLATES)
-    assert TEMPLATE_VERSION == "dynograph-templates-v2"
+    assert any(template["id"] == "dh_full" and template["side"] == "downhole" for template in TEMPLATES)
+    assert TEMPLATE_VERSION == "dynograph-templates-v3"
 
 
 def rectangle(load=1000):
