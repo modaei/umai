@@ -12,6 +12,7 @@ from umai.rod_pump_health.analysis import (
     analyze,
     coordinates,
     features,
+    reduce_points,
     health_reviewer,
     Point,
 )
@@ -108,6 +109,30 @@ def test_coordinates_are_rounded_and_put_in_time_order():
     points = [Point(position=1.26, load=10.4), Point(position=2.0, load=20.6)]
     assert coordinates(points, "sam1_reverse_time") == [[2.0, 21], [1.3, 10]]
     assert coordinates(points, "unknown") == [[1.3, 10], [2.0, 21]]
+
+
+def test_reduce_points_keeps_limit_endpoints_and_corners():
+    pairs = coordinates(rectangle(), "sam1_reverse_time")
+    reduced = reduce_points(pairs, 12)
+    assert len(reduced) == 12
+    assert reduced[0] == pairs[0] and reduced[-1] == pairs[-1]
+    assert all(corner in reduced for corner in ([100.0, 0], [100.0, 1000], [0.0, 1000]))
+    assert reduce_points(pairs, None) == pairs
+    assert reduce_points(pairs[:5], 12) == pairs[:5]
+
+
+def test_point_limits_apply_per_side_while_measurements_use_full_curves():
+    sent = []
+
+    def reviewer(content):
+        sent.append(json.loads(content[0]["text"]))
+        return problem_review()
+
+    result = analyze(packet(), reviewer, {"surface": 20, "downhole": 40})
+    assert len(sent[0]["surface"]["points"]) == 20
+    assert len(sent[0]["downhole"]["points"]) == 40
+    assert "down-sampled" in sent[0]["point_format"]
+    assert result["measurements"] == analyze(packet(), lambda _: problem_review())["measurements"]
 
 
 def test_healthy_review_has_no_findings():

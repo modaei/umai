@@ -67,13 +67,24 @@ def physical_points(points, position_scale=1, declared_empty=False):
 class RodPumpHealthAnalyzer:
     """Own data preparation and interpretation; derived records are written by UMetriqs."""
 
-    def __init__(self, engine, archive_engine, timezone, report_url, reviewer, http_post=httpx.post):
+    def __init__(
+        self,
+        engine,
+        archive_engine,
+        timezone,
+        report_url,
+        reviewer,
+        http_post=httpx.post,
+        point_limits=None,
+    ):
         self.engine = engine
         self.archive_engine = archive_engine
         self.timezone = ZoneInfo(timezone)
         self.report_url = report_url
         self.reviewer = reviewer
         self.http_post = http_post
+        # Maximum coordinates sent to the LLM per curve; None sends every point.
+        self.point_limits = point_limits
 
     def _well(self, well_id):
         """Resolve site ownership and configured scope from the operational database."""
@@ -279,7 +290,9 @@ class RodPumpHealthAnalyzer:
         """Read the selected card, reuse an unchanged saved review, or return a new result."""
         packet = self.prepare(well_id, recent_card)
         signature = hashlib.sha256(
-            json.dumps([packet.model_dump(mode="json"), VERSION], sort_keys=True).encode()
+            json.dumps(
+                [packet.model_dump(mode="json"), VERSION, self.point_limits], sort_keys=True
+            ).encode()
         ).hexdigest()
         with self.engine.connect() as connection:
             saved = (
@@ -303,7 +316,7 @@ class RodPumpHealthAnalyzer:
             findings = decoded(saved["findings"], {})
             if isinstance(findings, dict) and findings.get("review_status") == "complete":
                 return {**metadata, "unchanged": True, "review_status": "complete"}
-        result = analyze(packet, self.reviewer)
+        result = analyze(packet, self.reviewer, self.point_limits)
         captured = packet.card.timestamp.isoformat()
         return {
             **result,
@@ -360,4 +373,8 @@ def analyzer_from_settings(settings):
         settings.timezone,
         settings.umreports_api_url,
         lambda content: health_reviewer(settings)(content),
+        point_limits={
+            "surface": settings.rod_pump_health_surface_points,
+            "downhole": settings.rod_pump_health_downhole_points,
+        },
     )

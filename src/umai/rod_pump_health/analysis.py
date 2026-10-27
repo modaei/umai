@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator, ValidationEr
 
 logger = logging.getLogger(__name__)
 
-VERSION = "rod-pump-health-analysis-v11"
+VERSION = "rod-pump-health-analysis-v12"
 
 
 class Point(BaseModel):
@@ -214,14 +214,43 @@ def branch_features(points, span, spread):
 
 
 
-def coordinates(points: list[Point], point_order: str) -> list[list[float]]:
-    """Compact [position_in, load_lb] pairs; SAM1 reverse-time cards are put in time order."""
+def reduce_points(pairs: list[list[float]], limit: int | None) -> list[list[float]]:
+    """Largest-triangle-three-buckets down-sampling that keeps corners and peaks.
+
+    Both axes are scaled to 0..1 first so inches and pounds weigh equally; the first and
+    last points are always kept.
+    """
+    if limit is None or limit < 3 or len(pairs) <= limit:
+        return list(pairs)
+    xs, ys = [pair[0] for pair in pairs], [pair[1] for pair in pairs]
+    x_span, y_span = (max(xs) - min(xs)) or 1, (max(ys) - min(ys)) or 1
+    scaled = [((x - min(xs)) / x_span, (y - min(ys)) / y_span) for x, y in pairs]
+    bucket = (len(pairs) - 2) / (limit - 2)
+    kept, anchor = [0], 0
+    for index in range(limit - 2):
+        start, end = int(index * bucket) + 1, int((index + 1) * bucket) + 1
+        following = scaled[end : min(int((index + 2) * bucket) + 1, len(pairs))] or [scaled[-1]]
+        next_x = sum(point[0] for point in following) / len(following)
+        next_y = sum(point[1] for point in following) / len(following)
+        ax, ay = scaled[anchor]
+        anchor = max(
+            range(start, end),
+            key=lambda j: abs((ax - next_x) * (scaled[j][1] - ay) - (ax - scaled[j][0]) * (next_y - ay)),
+        )
+        kept.append(anchor)
+    kept.append(len(pairs) - 1)
+    return [pairs[index] for index in kept]
+
+
+def coordinates(points: list[Point], point_order: str, limit: int | None = None) -> list[list[float]]:
+    """Compact [position_in, load_lb] pairs in time order, down-sampled to at most limit points."""
     ordered = list(reversed(points)) if point_order == "sam1_reverse_time" else points
-    return [[round(point.position, 1), round(point.load)] for point in ordered]
+    return reduce_points([[round(point.position, 1), round(point.load)] for point in ordered], limit)
 
 
-def evidence(card: Card, measurements: dict) -> dict:
+def evidence(card: Card, measurements: dict, point_limits: dict | None = None) -> dict:
     """Build the text-only packet: header, measurements and coordinates for both card sides."""
+    limits = point_limits or {}
     header = {
         key: value
         for key, value in card.header.items()
@@ -240,7 +269,7 @@ def evidence(card: Card, measurements: dict) -> dict:
     downhole = {"measurements": measurements["downhole"]}
     if card.downhole:
         downhole["calculation"] = card.downhole_summary
-        downhole["points"] = coordinates(card.downhole, card.point_order)
+        downhole["points"] = coordinates(card.downhole, card.point_order, limits.get("downhole"))
     else:
         downhole["unavailable"] = card.downhole_error or "No calculated downhole card."
     return {
@@ -248,10 +277,13 @@ def evidence(card: Card, measurements: dict) -> dict:
         "captured_at": card.timestamp.isoformat(),
         "pumping_confirmed": "Well state was pumping from 10 minutes before to 5 minutes after capture.",
         "controller_header": controller,
-        "point_format": f"[position_in, load_lb] pairs in {order}",
+        "point_format": (
+            f"[position_in, load_lb] pairs in {order}, down-sampled to keep the card shape; "
+            "measurements use every controller point"
+        ),
         "surface": {
             "measurements": measurements["surface"],
-            "points": coordinates(card.surface, card.point_order),
+            "points": coordinates(card.surface, card.point_order, limits.get("surface")),
         },
         "downhole": downhole,
         "calculation_warnings": card.warnings,
@@ -271,8 +303,8 @@ def review_failure_message(exception, stage):
     return f"{stage}: {type(exception).__name__}: " + " ".join(message.split())[:600]
 
 
-def analyze(packet: AnalysisRequest, reviewer) -> dict:
-    """Measure the card, send its coordinates as text and keep the model's health assessment."""
+def analyze(packet: AnalysisRequest, reviewer, point_limits: dict | None = None) -> dict:
+    """Measure the full card, send down-sampled coordinates as text and keep the assessment."""
     card = packet.card
     measurements = {}
     limitations = []
@@ -294,7 +326,7 @@ def analyze(packet: AnalysisRequest, reviewer) -> dict:
     review_error = None
     token_usage = None
     if any(measurements[side]["status"] != "invalid" for side in measurements):
-        content = [{"type": "text", "text": json.dumps(evidence(card, measurements), default=str)}]
+        content = [{"type": "text", "text": json.dumps(evidence(card, measurements, point_limits), default=str)}]
         stage = "LLM request"
         try:
             raw_review = reviewer(content)
@@ -362,7 +394,8 @@ SYSTEM_PROMPT = (
     "is the controller's most recent card captured while the well was confirmed pumping. "
     "The input JSON has the SAM1 card header, the measured surface card and the downhole pump card "
     "calculated from it with the wave equation, each as [position_in, load_lb] coordinates with "
-    "measurements derived from those points. Base the diagnosis mainly on the downhole card shape "
+    "measurements derived from the full curves; the coordinates are down-sampled, so take peak and "
+    "minimum loads from the measurements. Base the diagnosis mainly on the downhole card shape "
     "(pump fillage, fluid pound, gas interference, gas lock, traveling or standing valve leak, worn "
     "pump, tagging, unanchored tubing, sticking, parted rods) and use the surface card for load "
     "range, rod loading and data quality. "
