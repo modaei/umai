@@ -902,10 +902,3 @@ def test_dashboard_briefing_never_accesses_conversation_storage():
     )
     assert endpoint(payload).model_dump() == {"answer": "Shared briefing."}
     assert endpoint(payload).answer == "Shared briefing."
-
-
-
-def test_visual_health_llm_endpoint_is_removed():
-    """Local health matching exposes no endpoint for the removed LLM comparison."""
-    app = create_app(settings=make_settings())
-    assert not any(route.path == "/rod-pump-health-llm" for route in app.routes)

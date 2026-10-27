@@ -231,15 +231,10 @@ def test_health_endpoint_reviews_in_order(
     app = module.create_app()
     route = next(r for r in app.routes if r.path == "/rod-pump-health-analysis")
     result = route.endpoint(WellAnalysisRequest(well_id=23))
-    expected_calls = [("cards", 23)] if card_fails else [("cards", 23), ("parameters", 23), ("conclusion", 23)]
-    assert calls == expected_calls
+    assert calls == [("cards", 23), ("parameters", 23), ("conclusion", 23)]
     assert result["review_status"] == ("failed" if card_fails else "complete")
-    assert result["parameter_trends"]["status"] == (
-        "disabled" if card_fails else "failed" if trend_fails else "complete"
-    )
-    assert result["conclusion"]["status"] == (
-        "disabled" if card_fails else "failed" if conclusion_fails else "complete"
-    )
+    assert result["parameter_trends"]["status"] == ("failed" if trend_fails else "complete")
+    assert result["conclusion"]["status"] == ("failed" if conclusion_fails else "complete")
     assert not any(r.path in {
         "/rod-pump-dynograph-analysis", "/rod-pump-parameter-trends-analysis",
     } for r in app.routes)

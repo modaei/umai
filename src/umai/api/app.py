@@ -11,7 +11,6 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from umai.rod_pump_health.reader import WellAnalysisRequest, analyzer_from_settings
-from umai.rod_pump_health.matching import VERSION as LOCAL_MATCHING_VERSION
 from umai.rod_pump_health.conclusion import conclusion_analyzer_from_settings
 from umai.rod_pump_health.parameter_trends import (
     parameter_analyzer_from_settings,
@@ -51,7 +50,7 @@ from umai.services.rag_sources import extract_rag_sources
 
 ALLOWED_HOSTS = {"127.0.0.1", "::1"}
 
-# Health checks currently return local shape matches only; keep optional LLM reviews disabled.
+# Temporarily pause the extra reviews while retaining their implementation and saved results.
 EXTENDED_HEALTH_ANALYSIS_ENABLED = False
 
 logger = logging.getLogger(__name__)
@@ -114,7 +113,7 @@ def create_app(
 
     @app.post("/rod-pump-health-analysis")
     def rod_pump_health_analysis(payload: WellAnalysisRequest) -> dict[str, Any]:
-        """Return both local matchers without invoking optional LLM stages for local analysis."""
+        """Review cards; run the retained optional stages only when explicitly re-enabled."""
         if not app.state.dynograph_slots.acquire(timeout=settings.umai_slot_timeout):
             raise HTTPException(status_code=503, detail="Rod-pump health analysis is busy")
         try:
@@ -127,9 +126,8 @@ def create_app(
                 result = {
                     "well_id": payload.well_id, "site_id": well["site_id"],
                     "review_status": "failed", "review_error": "Dynograph analysis failed.",
-                    "analyzer_version": LOCAL_MATCHING_VERSION,
                 }
-            if not EXTENDED_HEALTH_ANALYSIS_ENABLED or result.get("analyzer_version") == LOCAL_MATCHING_VERSION:
+            if not EXTENDED_HEALTH_ANALYSIS_ENABLED:
                 return {
                     **result, "parameter_trends": {"status": "disabled"},
                     "conclusion": {"status": "disabled"},
