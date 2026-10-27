@@ -5,7 +5,7 @@ import httpx
 import pytest
 from sqlalchemy import create_engine, text
 
-from umai.rod_pump_health.reader import RodPumpHealthAnalyzer, physical_points
+from umai.rod_pump_health.reader import RecentCardReference, RodPumpHealthAnalyzer, physical_points
 
 
 def surface_points():
@@ -96,8 +96,8 @@ def analyzer():
 
     def reviewer(content):
         calls["review"] += 1
-        assert any(part["type"] == "image_url" for part in content)
-        return {"findings": [], "limitations": []}
+        assert [part["type"] for part in content] == ["text"]
+        return {"health_status": "healthy", "summary": "Normal card.", "findings": [], "limitations": []}
 
     service = RodPumpHealthAnalyzer(operational, archive, "UTC", "http://reports", reviewer, post)
     yield service, calls
@@ -105,23 +105,51 @@ def analyzer():
     archive.dispose()
 
 
-def test_well_id_resolves_site_and_retrieves_both_card_sides(analyzer):
+def archived_reference(card_id=14):
+    """Reference one fixture archive card the way UMetriqs' selector would."""
+    capture = int(
+        (datetime(2026, 10, 1, 9, tzinfo=timezone.utc) + timedelta(days=card_id - 1)).timestamp()
+    )
+    return RecentCardReference(
+        source="archive",
+        id=card_id,
+        pull_timestamp=capture,
+        card_timestamp=capture,
+        pumping_window_start=capture - 600,
+        pumping_window_end=capture + 300,
+    )
+
+
+def test_selected_card_is_the_only_card_reviewed_with_both_sides(analyzer):
     service, calls = analyzer
-    result = service.analyze(23)
+    result = service.analyze(23, archived_reference())
     assert result["site_id"] == 4
     assert result["well_id"] == 23
-    assert len(result["input_cards"]) == 14
-    assert result["input_cards"][0]["surface"][20]["position"] == 100
-    assert result["input_cards"][0]["downhole"][20]["position"] == 100
-    assert result["status"] == "complete"  # Latest baseline supplies the local fallback.
-    assert calls["report"][0]["site_id"] == 4
-    assert calls["report"][0]["params"]["surface_cards"][0]["id"] == "archive:1"
+    assert len(result["input_cards"]) == 1
+    card = result["input_cards"][0]
+    assert card["reference"] == "archive:14"
+    assert card["roles"] == ["recent"]
+    assert card["surface"][20]["position"] == 100
+    assert card["downhole"][20]["position"] == 100
+    assert result["status"] == "complete"
+    assert result["health_status"] == "healthy"
+    assert result["window_start_at"] == result["latest_card_at"] == "2026-10-14T09:00:00+00:00"
+    assert len(calls["report"]) == 1
+    assert [c["id"] for c in calls["report"][0]["params"]["surface_cards"]] == ["archive:14"]
+    assert calls["review"] == 1
+
+
+def test_missing_selected_card_is_rejected_without_reading_reports(analyzer):
+    service, calls = analyzer
+    with pytest.raises(ValueError, match="No eligible pumping card"):
+        service.analyze(23)
+    assert calls["report"] == []
     assert calls["review"] == 0
 
 
-def test_local_result_reuses_cache_and_never_calls_llm(analyzer):
+def test_unchanged_saved_result_skips_llm_but_changed_source_reanalyzes(analyzer):
     service, calls = analyzer
-    first = service.analyze(23)
+    first = service.analyze(23, archived_reference())
     with service.engine.begin() as connection:
         connection.execute(
             text("INSERT INTO rod_pump_health_analyses VALUES(23,:signature,:findings)"),
@@ -130,17 +158,17 @@ def test_local_result_reuses_cache_and_never_calls_llm(analyzer):
                 "findings": json.dumps({"review_status": "complete"}),
             },
         )
-    assert service.analyze(23)["unchanged"] is True
-    assert calls["review"] == 0
+    assert service.analyze(23, archived_reference())["unchanged"] is True
+    assert calls["review"] == 1
     points = surface_points()
     points[5]["load"] = 25
     with service.archive_engine.begin() as connection:
         connection.execute(
-            text("UPDATE rod_pump_card_archive SET data_points=:points WHERE id=1"),
+            text("UPDATE rod_pump_card_archive SET data_points=:points WHERE id=14"),
             {"points": json.dumps(points)},
         )
-    assert service.analyze(23)["unchanged"] is False
-    assert calls["review"] == 0
+    assert service.analyze(23, archived_reference())["unchanged"] is False
+    assert calls["review"] == 2
 
 
 def test_downhole_failure_preserves_surface_analysis(analyzer):
@@ -150,45 +178,21 @@ def test_downhole_failure_preserves_surface_analysis(analyzer):
         raise httpx.ConnectError("unavailable")
 
     service.http_post = unavailable
-    result = service.analyze(23)
+    result = service.analyze(23, archived_reference())
     assert result["status"] == "partial"
     assert result["review_status"] == "complete"
-    assert all(card["surface"] and not card["downhole"] for card in result["input_cards"])
-    assert all(card["downhole_error"] for card in result["input_cards"])
+    card = result["input_cards"][0]
+    assert card["surface"] and not card["downhole"]
+    assert card["downhole_error"]
 
 
 def test_unconfigured_or_unknown_wells_are_rejected_before_archive_or_report_access(analyzer):
     service, calls = analyzer
     for well_id in [24, 999]:
         with pytest.raises(ValueError):
-            service.analyze(well_id)
+            service.analyze(well_id, archived_reference())
     assert calls["report"] == []
     assert calls["review"] == 0
-
-
-def test_daily_median_deduplication_and_event_exclusion(analyzer):
-    service, _ = analyzer
-    first = int(datetime(2026, 10, 1, 9, tzinfo=timezone.utc).timestamp())
-    with service.archive_engine.begin() as connection:
-        for card_id, offset, reason in [
-            (101, 0, "daily_baseline"),
-            (102, 100, "daily_baseline"),
-            (103, 200, "daily_baseline"),
-            (104, 300, "daily_baseline"),
-            (105, 400, "event"),
-        ]:
-            connection.execute(
-                text(
-                    "INSERT INTO rod_pump_card_archive SELECT :id,well_id,card_timestamp+:offset,"
-                    "pull_timestamp,source_card_id,card_type,data_points,info,:reason,retention_state "
-                    "FROM rod_pump_card_archive WHERE id=1"
-                ),
-                {"id": card_id, "offset": offset, "reason": json.dumps([reason])},
-            )
-    cards, _, _ = service._daily_cards(23)
-    assert len(cards) == 14
-    assert cards[0]["id"] == 102  # Lower median after deduplicating repeated capture time.
-    assert cards[0]["card_timestamp"] == first + 100
 
 
 def test_unit_conversion_and_bad_curves_are_not_partially_repaired():
@@ -229,11 +233,10 @@ def test_selected_archive_card_resolves_even_without_baseline_reason(analyzer, m
         pumping_window_end=capture + 300,
     )
     result = service.analyze(23, reference)
-    assert len(result["input_cards"]) == 15
-    assert result["input_cards"][-1]["reference"] == "archive:99"
-    assert result["input_cards"][-1]["roles"] == ["recent"]
-    assert result["matched_cards"]["surface"] == "archive:99"
-    assert calls["review"] == 0
+    assert len(result["input_cards"]) == 1
+    assert result["input_cards"][0]["reference"] == "archive:99"
+    assert result["input_cards"][0]["roles"] == ["recent"]
+    assert calls["review"] == 1
     assert result["status"] == "complete"
 
 
@@ -262,9 +265,9 @@ def test_recent_reference_cannot_cross_wells_or_lie_about_pumping_window(analyze
     invalid = reference.model_copy(update={"pumping_window_end": capture + 200})
     with pytest.raises(ValueError):
         service._recent_card(23, invalid)
-    packet, _, _ = service.prepare(23, reference)
-    assert len(packet.cards) == 14
-    assert packet.cards[-1].roles == ["baseline", "recent"]
+    packet = service.prepare(23, reference)
+    assert packet.card.reference == "archive:14"
+    assert packet.card.roles == ["recent"]
 
 
 def test_live_reference_reads_its_linked_pull_and_survives_exact_archive_fallback(
@@ -339,23 +342,3 @@ def test_live_reference_reads_its_linked_pull_and_survives_exact_archive_fallbac
     recovered = service.analyze(23, reference)
     assert recovered["input_cards"][-1]["reference"] == "archive:99"
     assert recovered["status"] == "complete"
-
-
-def test_previous_matcher_version_is_not_reused(analyzer):
-    import hashlib
-
-    service, calls = analyzer
-    packet, _, _ = service.prepare(23)
-    old_signature = hashlib.sha256(json.dumps(
-        [packet.model_dump(mode="json"), "local-dynograph-matching-v1", "dynograph-templates-v2"],
-        sort_keys=True,
-    ).encode()).hexdigest()
-    with service.engine.begin() as connection:
-        connection.execute(text("INSERT INTO rod_pump_health_analyses VALUES(23,:signature,:findings)"), {
-            "signature": old_signature,
-            "findings": json.dumps({"review_status": "complete", "matching_method": "local-dynograph-matching-v1"}),
-        })
-    result = service.analyze(23)
-    assert result["unchanged"] is False
-    assert result["matching_method"] == "local-dynograph-matching-v11"
-    assert calls["review"] == 0
