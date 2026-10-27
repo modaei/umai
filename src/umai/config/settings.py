@@ -60,6 +60,8 @@ class Settings:
     db_archive_user: str = ""
     db_archive_password: str | None = None
     db_archive_name: str = ""
+    rod_pump_health_llm_model: str = ""
+    rod_pump_health_llm_effort: str = "medium"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -145,6 +147,13 @@ class Settings:
             ).strip(),
             rag_embedding_dimensions=int(os.getenv("RAG_EMBEDDING_DIMENSIONS", "1536")),
             log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
+            # The health check has its own model; it shares the LLM key and base URL.
+            rod_pump_health_llm_model=os.getenv(
+                "ROD_PUMP_HEALTH_LLM_MODEL", os.getenv("LLM_MODEL", "gpt-5-mini")
+            ).strip(),
+            rod_pump_health_llm_effort=os.getenv(
+                "ROD_PUMP_HEALTH_LLM_EFFORT", "medium"
+            ).strip().lower(),
         )
 
     def validate(self) -> None:
@@ -152,6 +161,8 @@ class Settings:
             raise ValueError("LLM_API_KEY is not configured.")
         if self.umreports_timeout_seconds <= 0:
             raise ValueError("UMREPORTS_TIMEOUT_SECONDS must be positive.")
+        if self.rod_pump_health_llm_effort not in ("low", "medium", "high", "xhigh"):
+            raise ValueError("ROD_PUMP_HEALTH_LLM_EFFORT must be low, medium, high or xhigh.")
         if self.max_report_days <= 0:
             raise ValueError("MAX_REPORT_DAYS must be positive.")
         if not self.monitoring_data_api_url:

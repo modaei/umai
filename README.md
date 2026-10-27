@@ -155,6 +155,15 @@ LLM_MODEL=openai/gpt-5-mini
 LLM_BASE_URL=https://openrouter.ai/api/v1
 ```
 
+The rod-pump health check (`/rod-pump-health-analysis`) uses its own model and
+reasoning effort (`low`, `medium`, `high` or `xhigh`). It reuses `LLM_API_KEY`
+and `LLM_BASE_URL`; when the model is unset it falls back to `LLM_MODEL`:
+
+```bash
+ROD_PUMP_HEALTH_LLM_MODEL=anthropic/claude-opus-5.5
+ROD_PUMP_HEALTH_LLM_EFFORT=medium
+```
+
 Configure the Ometrics MySQL connection for reading operational data and storing
 conversation history:
 
