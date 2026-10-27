@@ -62,6 +62,8 @@ class Settings:
     db_archive_name: str = ""
     rod_pump_health_llm_model: str = ""
     rod_pump_health_llm_effort: str = "medium"
+    rod_pump_health_surface_points: int = 60
+    rod_pump_health_downhole_points: int = 100
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -154,6 +156,11 @@ class Settings:
             rod_pump_health_llm_effort=os.getenv(
                 "ROD_PUMP_HEALTH_LLM_EFFORT", "medium"
             ).strip().lower(),
+            # Points sent to the LLM per curve; measurements still use the full curves.
+            rod_pump_health_surface_points=int(os.getenv("ROD_PUMP_HEALTH_SURFACE_POINTS", "60")),
+            rod_pump_health_downhole_points=int(
+                os.getenv("ROD_PUMP_HEALTH_DOWNHOLE_POINTS", "100")
+            ),
         )
 
     def validate(self) -> None:
@@ -163,6 +170,10 @@ class Settings:
             raise ValueError("UMREPORTS_TIMEOUT_SECONDS must be positive.")
         if self.rod_pump_health_llm_effort not in ("low", "medium", "high", "xhigh"):
             raise ValueError("ROD_PUMP_HEALTH_LLM_EFFORT must be low, medium, high or xhigh.")
+        if min(self.rod_pump_health_surface_points, self.rod_pump_health_downhole_points) < 3:
+            raise ValueError(
+                "ROD_PUMP_HEALTH_SURFACE_POINTS and ROD_PUMP_HEALTH_DOWNHOLE_POINTS must be at least 3."
+            )
         if self.max_report_days <= 0:
             raise ValueError("MAX_REPORT_DAYS must be positive.")
         if not self.monitoring_data_api_url:

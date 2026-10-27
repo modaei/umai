@@ -164,6 +164,15 @@ ROD_PUMP_HEALTH_LLM_MODEL=anthropic/claude-opus-5.5
 ROD_PUMP_HEALTH_LLM_EFFORT=medium
 ```
 
+To keep the request small, each curve is down-sampled with largest-triangle-three-buckets
+(LTTB) before it is sent, which keeps the card's corners and peaks. Measurements and the
+saved cards still use every controller point. Both limits must be at least 3:
+
+```bash
+ROD_PUMP_HEALTH_SURFACE_POINTS=60
+ROD_PUMP_HEALTH_DOWNHOLE_POINTS=100
+```
+
 Configure the Ometrics MySQL connection for reading operational data and storing
 conversation history:
 

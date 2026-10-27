@@ -120,6 +120,20 @@ def archived_reference(card_id=14):
     )
 
 
+def test_point_limits_reduce_only_sent_coordinates_and_change_signature(analyzer):
+    service, _ = analyzer
+    full = service.analyze(23, archived_reference())
+    sent = []
+    review = service.reviewer
+    service.reviewer = lambda content: sent.append(json.loads(content[0]["text"])) or review(content)
+    service.point_limits = {"surface": 10, "downhole": 12}
+    reduced = service.analyze(23, archived_reference())
+    assert len(sent[0]["surface"]["points"]) == 10
+    assert len(sent[0]["downhole"]["points"]) == 12
+    assert reduced["input_cards"] == full["input_cards"]
+    assert reduced["input_signature"] != full["input_signature"]
+
+
 def test_selected_card_is_the_only_card_reviewed_with_both_sides(analyzer):
     service, calls = analyzer
     result = service.analyze(23, archived_reference())
