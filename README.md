@@ -174,6 +174,32 @@ ROD_PUMP_HEALTH_SURFACE_POINTS=60
 ROD_PUMP_HEALTH_DOWNHOLE_POINTS=100
 ```
 
+A scikit-learn classifier (`models/rod_pump_downhole_classifier.joblib`) labels each
+downhole card first. A card reuses the last LLM review instead of calling the LLM when all
+of these hold: the label is `healthy` or a `fluid_pound_*` level, both confidences are at
+least the threshold, the downhole load range is not collapsed, the label and classifier
+version match those of the last complete LLM review, and that review's card is less than
+the refresh period older. Every other card goes to the LLM; a confident healthy card that
+only needs its periodic refresh uses the cheaper routine effort. An empty model path sends
+every card to the LLM. The model only loads with the scikit-learn version that trained it.
+
+```bash
+ROD_PUMP_HEALTH_CLASSIFIER_MODEL=models/rod_pump_downhole_classifier.joblib
+ROD_PUMP_HEALTH_CLASSIFIER_MIN_CONFIDENCE=0.9
+ROD_PUMP_HEALTH_LLM_REFRESH_DAYS=7
+ROD_PUMP_HEALTH_ROUTINE_EFFORT=low
+ROD_PUMP_HEALTH_MIN_DOWNHOLE_LOAD_RANGE_LB=3000
+```
+
+Retrain from labeled card CSVs (`well`, `source_card_id`, `card_date`, `data_points`,
+`health`, `label`); the report holds out whole wells:
+
+```bash
+umai-train-card-classifier --train-file data/dynocard_training_data.csv \
+  --train-file data/dynocard_synthetic_data.csv \
+  --output models/rod_pump_downhole_classifier.joblib
+```
+
 Configure the Ometrics MySQL connection for reading operational data and storing
 conversation history:
 

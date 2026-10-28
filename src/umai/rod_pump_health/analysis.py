@@ -303,9 +303,8 @@ def review_failure_message(exception, stage):
     return f"{stage}: {type(exception).__name__}: " + " ".join(message.split())[:600]
 
 
-def analyze(packet: AnalysisRequest, reviewer, point_limits: dict | None = None) -> dict:
-    """Measure the full card, send down-sampled coordinates as text and keep the assessment."""
-    card = packet.card
+def measure(card: Card) -> tuple[dict, list[str]]:
+    """Measure both full curves and list the data-quality limitations they show."""
     measurements = {}
     limitations = []
     for side in ("surface", "downhole"):
@@ -319,6 +318,13 @@ def analyze(packet: AnalysisRequest, reviewer, point_limits: dict | None = None)
             limitations.append(side + ": the curve does not close; measurements are approximate.")
     if not card.downhole:
         limitations.append("downhole: calculated card unavailable; surface card reviewed alone.")
+    return measurements, limitations
+
+
+def analyze(packet: AnalysisRequest, reviewer, point_limits: dict | None = None) -> dict:
+    """Measure the full card, send down-sampled coordinates as text and keep the assessment."""
+    card = packet.card
+    measurements, limitations = measure(card)
     findings = []
     health_status = None
     summary = None
@@ -447,15 +453,16 @@ def _structured_reviewer(model, settings, system_prompt):
     return review
 
 
-def health_reviewer(settings):
-    """Use the dedicated health-check model with schema-constrained JSON and a reasoning effort."""
+def health_reviewer(settings, effort=None):
+    """Use the dedicated health-check model with schema-constrained JSON and a reasoning effort
+    (the configured one unless another is given, e.g. the routine effort)."""
     from langchain_openai import ChatOpenAI
 
     model = ChatOpenAI(
         model=settings.rod_pump_health_llm_model,
         api_key=settings.llm_api_key,
         base_url=settings.llm_base_url,
-        reasoning_effort=settings.rod_pump_health_llm_effort,
+        reasoning_effort=effort or settings.rod_pump_health_llm_effort,
         max_tokens=16000,
         timeout=300,
         max_retries=0,

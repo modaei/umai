@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -9,6 +10,22 @@ from umai.config.logging import LOG_LEVELS
 
 
 load_dotenv()
+
+# The committed downhole classifier; relative paths in the setting resolve from the repository root.
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_CLASSIFIER_MODEL = "models/rod_pump_downhole_classifier.joblib"
+
+
+def _repository_path(value: str) -> str:
+    """Resolve a relative path from the repository root (or, for an installed copy, the working
+    directory); an empty value stays empty."""
+    if not value:
+        return ""
+    path = Path(value)
+    if path.is_absolute():
+        return str(path)
+    in_repository = _REPOSITORY_ROOT / path
+    return str(in_repository if in_repository.exists() else Path.cwd() / path)
 
 
 @dataclass(frozen=True)
@@ -64,6 +81,11 @@ class Settings:
     rod_pump_health_llm_effort: str = "medium"
     rod_pump_health_surface_points: int = 60
     rod_pump_health_downhole_points: int = 100
+    rod_pump_health_classifier_model: str = ""
+    rod_pump_health_classifier_min_confidence: float = 0.9
+    rod_pump_health_llm_refresh_days: int = 7
+    rod_pump_health_routine_effort: str = "low"
+    rod_pump_health_min_downhole_load_range_lb: float = 3000.0
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -161,6 +183,20 @@ class Settings:
             rod_pump_health_downhole_points=int(
                 os.getenv("ROD_PUMP_HEALTH_DOWNHOLE_POINTS", "100")
             ),
+            # Downhole classifier that lets routine cards reuse the last LLM review; empty disables it.
+            rod_pump_health_classifier_model=_repository_path(
+                os.getenv("ROD_PUMP_HEALTH_CLASSIFIER_MODEL", DEFAULT_CLASSIFIER_MODEL).strip()
+            ),
+            rod_pump_health_classifier_min_confidence=float(
+                os.getenv("ROD_PUMP_HEALTH_CLASSIFIER_MIN_CONFIDENCE", "0.9")
+            ),
+            rod_pump_health_llm_refresh_days=int(os.getenv("ROD_PUMP_HEALTH_LLM_REFRESH_DAYS", "7")),
+            rod_pump_health_routine_effort=os.getenv(
+                "ROD_PUMP_HEALTH_ROUTINE_EFFORT", "low"
+            ).strip().lower(),
+            rod_pump_health_min_downhole_load_range_lb=float(
+                os.getenv("ROD_PUMP_HEALTH_MIN_DOWNHOLE_LOAD_RANGE_LB", "3000")
+            ),
         )
 
     def validate(self) -> None:
@@ -170,6 +206,12 @@ class Settings:
             raise ValueError("UMREPORTS_TIMEOUT_SECONDS must be positive.")
         if self.rod_pump_health_llm_effort not in ("low", "medium", "high", "xhigh"):
             raise ValueError("ROD_PUMP_HEALTH_LLM_EFFORT must be low, medium, high or xhigh.")
+        if self.rod_pump_health_routine_effort not in ("low", "medium", "high", "xhigh"):
+            raise ValueError("ROD_PUMP_HEALTH_ROUTINE_EFFORT must be low, medium, high or xhigh.")
+        if not 0 < self.rod_pump_health_classifier_min_confidence <= 1:
+            raise ValueError("ROD_PUMP_HEALTH_CLASSIFIER_MIN_CONFIDENCE must be above 0 and at most 1.")
+        if self.rod_pump_health_llm_refresh_days <= 0:
+            raise ValueError("ROD_PUMP_HEALTH_LLM_REFRESH_DAYS must be positive.")
         if min(self.rod_pump_health_surface_points, self.rod_pump_health_downhole_points) < 3:
             raise ValueError(
                 "ROD_PUMP_HEALTH_SURFACE_POINTS and ROD_PUMP_HEALTH_DOWNHOLE_POINTS must be at least 3."
