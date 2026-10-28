@@ -115,11 +115,11 @@ and SQL audit records, is stored in `ai_messages.info`.
 ## Setup
 
 Run the following UMAI commands from the UMAI repository root. UMAI needs Python
-3.12 or newer (pandas 3 and the pinned scikit-learn for the dynograph classifier).
+3.10 or newer (the dynograph classifier pins scikit-learn 1.7.2, the version its model was trained with).
 Create a virtual environment and install dependencies:
 
 ```bash
-python3.12 -m venv venv
+python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 pip install .
@@ -192,11 +192,12 @@ ROD_PUMP_HEALTH_MIN_DOWNHOLE_LOAD_RANGE_LB=3000
 ```
 
 Retrain from labeled card CSVs (`well`, `source_card_id`, `card_date`, `data_points`,
-`health`, `label`); the report holds out whole wells:
+`health`, `label`); when a card is in more than one file, the last file wins. The report
+holds out whole wells:
 
 ```bash
 umai-train-card-classifier --train-file data/dynocard_training_data.csv \
-  --train-file data/dynocard_synthetic_data.csv \
+  --train-file data/dynocard_synthetic_data.csv --train-file data/field_events.csv \
   --output models/rod_pump_downhole_classifier.joblib
 ```
 

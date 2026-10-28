@@ -1,3 +1,4 @@
+import copy
 import json
 from datetime import datetime
 from pathlib import Path
@@ -44,6 +45,27 @@ def test_untrustworthy_model_files_disable_the_classifier(tmp_path):
     unknown = tmp_path / "unknown.joblib"
     joblib.dump({"models": {}}, unknown)
     assert load_classifier(str(unknown)) is None
+
+
+def test_training_script_model_files_load_on_one_core(tmp_path):
+    models = copy.deepcopy(load_classifier(str(ROOT / DEFAULT_CLASSIFIER_MODEL)).models)
+    for model in models.values():
+        model.steps[-1][1].set_params(n_jobs=-1)
+    script_file = tmp_path / "card_model.joblib"
+    joblib.dump({"models": {t: {"model": m, "X": None} for t, m in models.items()}}, script_file)
+    classifier = load_classifier(str(script_file))
+    assert classifier.classify(CARDS[1]["points"])["label"] == CARDS[1]["label"]
+    assert {m.steps[-1][1].n_jobs for m in classifier.models.values()} == {1}
+
+
+def test_models_saved_by_another_scikit_learn_version_are_rejected(tmp_path, monkeypatch):
+    from sklearn.preprocessing import StandardScaler
+
+    monkeypatch.setattr("sklearn.base.__version__", "0.0.1")
+    old = tmp_path / "old.joblib"
+    joblib.dump({"models": {"health": {"model": StandardScaler()}}}, old)
+    monkeypatch.undo()
+    assert load_classifier(str(old)) is None
 
 
 class FakeClassifier:
