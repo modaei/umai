@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from pathlib import Path
 
 import joblib
@@ -98,7 +99,9 @@ def test_first_review_of_a_healthy_card_uses_the_routine_effort(routed):
     assert result["review_source"] == "llm"
     assert result["routing"] == {"llm_called": True, "reason": "no previous LLM review"}
     assert result["classifier"]["label"] == "healthy"
-    assert result["llm_review"] == {
+    review = dict(result["llm_review"])
+    assert datetime.fromisoformat(review.pop("reviewed_at")).tzinfo is not None
+    assert review == {
         "card_reference": "archive:14",
         "card_captured_at": "2026-10-14T09:00:00+00:00",
         "effort": "routine",

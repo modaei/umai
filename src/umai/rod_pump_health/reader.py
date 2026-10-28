@@ -402,6 +402,7 @@ class RodPumpHealthAnalyzer:
             result["review_source"] = "llm"
             if result["review_status"] == "complete":
                 result["llm_review"] = {
+                    "reviewed_at": datetime.now(self.timezone).isoformat(timespec="seconds"),
                     "card_reference": packet.card.reference,
                     "card_captured_at": packet.card.timestamp.isoformat(),
                     "effort": effort,
