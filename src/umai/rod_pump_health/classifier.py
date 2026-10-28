@@ -85,27 +85,54 @@ def load_classifier(path: str) -> DownholeClassifier | None:
     if not file.is_file():
         logger.warning("Dynograph classifier disabled: model file not found at %s", path)
         return None
+    import warnings
+
     import joblib
     import sklearn
+    from sklearn.exceptions import InconsistentVersionWarning
 
     try:
-        saved = joblib.load(file)
+        # Saved forests are only reliable with the scikit-learn version that trained them;
+        # scikit-learn warns on load when the versions differ.
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", InconsistentVersionWarning)
+            saved = joblib.load(file)
+    except InconsistentVersionWarning as warning:
+        logger.warning(
+            "Dynograph classifier disabled: trained with scikit-learn %s, running %s",
+            warning.original_sklearn_version, warning.current_sklearn_version,
+        )
+        return None
     except Exception:
         logger.exception("Dynograph classifier disabled: model file could not be loaded")
         return None
-    if not isinstance(saved, dict) or saved.get("format") != FORMAT:
+    if not isinstance(saved, dict):
         logger.warning("Dynograph classifier disabled: unknown model format in %s", path)
         return None
-    # Saved forests are only reliable with the scikit-learn version that trained them.
-    if saved.get("sklearn_version") != sklearn.__version__:
-        logger.warning(
-            "Dynograph classifier disabled: trained with scikit-learn %s, running %s",
-            saved.get("sklearn_version"), sklearn.__version__,
-        )
+    if saved.get("format") == FORMAT:
+        if saved.get("sklearn_version") != sklearn.__version__:
+            logger.warning(
+                "Dynograph classifier disabled: trained with scikit-learn %s, running %s",
+                saved.get("sklearn_version"), sklearn.__version__,
+            )
+            return None
+        models = saved.get("models") or {}
+    elif "format" not in saved and isinstance(saved.get("models"), dict):
+        # Training-script (card matcher) file: {"models": {target: {"model": ..., "X": ...}}}.
+        models = {
+            target: entry.get("model") if isinstance(entry, dict) else None
+            for target, entry in saved["models"].items()
+        }
+    else:
+        logger.warning("Dynograph classifier disabled: unknown model format in %s", path)
         return None
-    models = saved.get("models") or {}
-    if not {"health", "label"} <= set(models):
+    if not all(hasattr(models.get(target), "predict_proba") for target in ("health", "label")):
         logger.warning("Dynograph classifier disabled: health or label model missing")
         return None
+    for target in ("health", "label"):
+        # UMAI classifies one card per request; one core avoids starting a worker pool each time.
+        estimator = models[target].steps[-1][1] if hasattr(models[target], "steps") else models[target]
+        if "n_jobs" in estimator.get_params():
+            estimator.set_params(n_jobs=1)
     version = hashlib.sha256(file.read_bytes()).hexdigest()[:12]
     return DownholeClassifier(models, version)

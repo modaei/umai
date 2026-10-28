@@ -43,7 +43,8 @@ def load_cards(files, skip_before="2020-01-01", utc_offset_hours=-6):
     if "card_date" not in frame and "card_timestamp" in frame:
         frame["card_date"] = frame["card_timestamp"].map(lambda v: _card_date(v, utc_offset_hours))
     frame["card_id"] = frame["well"] + "|" + frame["source_card_id"]
-    frame = frame.drop_duplicates("card_id")
+    # Later files win, so a card in a field-events file replaces its label from the main file.
+    frame = frame.drop_duplicates("card_id", keep="last")
     if skip_before:
         frame = frame[frame["card_date"].fillna("").str[:10] >= skip_before]
     rows, features = [], []
