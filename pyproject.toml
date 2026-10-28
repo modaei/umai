@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "umai"
 version = "0.1.0"
 description = "Read-only Ometrics AI assistant."
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "langchain>=1.0,<2",
     "langgraph>=1.0,<2",
@@ -21,6 +21,12 @@ dependencies = [
     "psycopg[binary]>=3.2,<4",
     "pgvector>=0.3,<1",
     "Pillow>=10,<12",
+    # Dynograph classifier. Saved scikit-learn models only load reliably with the
+    # exact version that trained them, so scikit-learn is pinned.
+    "numpy>=2,<3",
+    "pandas>=3,<4",
+    "scikit-learn==1.9.1",
+    "joblib>=1.4,<2",
 ]
 
 [project.optional-dependencies]

@@ -114,12 +114,13 @@ and SQL audit records, is stored in `ai_messages.info`.
 
 ## Setup
 
-Run the following UMAI commands from the UMAI repository root. Create a virtual
-environment and install dependencies:
+Run the following UMAI commands from the UMAI repository root. UMAI needs Python
+3.12 or newer (pandas 3 and the pinned scikit-learn for the dynograph classifier).
+Create a virtual environment and install dependencies:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+python3.12 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 pip install .
 cp .env.example .env
@@ -266,14 +267,14 @@ python3 -m uvicorn api:app --host 127.0.0.1 --port 50008
 Start UMAI API for Ometrics:
 
 ```bash
-source .venv/bin/activate
+source venv/bin/activate
 python3 -m uvicorn umai.api.app:app --host 127.0.0.1 --port 50009
 ```
 
 Process queued UMAI RAG index events periodically:
 
 ```bash
-source .venv/bin/activate
+source venv/bin/activate
 umai-process-rag-index-events
 ```
 
@@ -293,7 +294,7 @@ umai-process-rag-index-events
 ## Tests
 
 ```bash
-source .venv/bin/activate
+source venv/bin/activate
 pytest -q
 ```
 
