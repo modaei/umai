@@ -174,22 +174,48 @@ ROD_PUMP_HEALTH_SURFACE_POINTS=60
 ROD_PUMP_HEALTH_DOWNHOLE_POINTS=100
 ```
 
-A scikit-learn classifier (`models/rod_pump_downhole_classifier.joblib`) labels each
-downhole card first. A card reuses the last LLM review instead of calling the LLM when all
-of these hold: the label is `healthy` or a `fluid_pound_*` level, both confidences are at
-least the threshold, the downhole load range is not collapsed, the label and classifier
-version match those of the last complete LLM review, and that review's card is less than
-the refresh period older. Every other card goes to the LLM; a confident healthy card that
-only needs its periodic refresh uses the cheaper routine effort. An empty model path sends
-every card to the LLM. The model only loads with the scikit-learn version that trained it.
+A scikit-learn classifier labels each downhole card first. A card reuses the last LLM review
+instead of calling the LLM when all of these hold: the label is one the live model trusts, both
+confidences reach that label's threshold (never below `ROD_PUMP_HEALTH_CLASSIFIER_MIN_CONFIDENCE`),
+the downhole load range is not collapsed, the label and classifier version match those of the
+last complete LLM review, that review's card is less than the refresh period older, and the card
+is not in the audit sample (a fixed share that goes to the LLM anyway to keep checking trusted
+labels). Every other card goes to the LLM; a confident healthy card that only needs its periodic
+refresh uses the cheaper routine effort. A model only loads with the scikit-learn version that
+trained it.
 
 ```bash
+ROD_PUMP_HEALTH_CLASSIFIER_DIR=models/rod_pump_classifier
 ROD_PUMP_HEALTH_CLASSIFIER_MODEL=models/rod_pump_downhole_classifier.joblib
 ROD_PUMP_HEALTH_CLASSIFIER_MIN_CONFIDENCE=0.9
+ROD_PUMP_HEALTH_CLASSIFIER_AUDIT_RATE=0.05
 ROD_PUMP_HEALTH_LLM_REFRESH_DAYS=7
 ROD_PUMP_HEALTH_ROUTINE_EFFORT=low
 ROD_PUMP_HEALTH_MIN_DOWNHOLE_LOAD_RANGE_LB=3000
 ```
+
+Every LLM review also names the card's pattern from the list in
+`src/umai/rod_pump_health/labels.py`; UMetriqs stores it, with a copy of the downhole card, in
+`rod_pump_card_labels` in the archive database. Those labels train new models:
+
+```bash
+umai-card-classifier train --if-needed   # weekly; trains only with enough new labels
+umai-card-classifier status              # live model, trusted labels, recent changes
+umai-card-classifier promote VERSION [--trust LABEL]... [--untrust LABEL]...
+umai-card-classifier untrust LABEL       # send a label back to the LLM, same model
+umai-card-classifier trust LABEL [--threshold T] [--force]
+umai-card-classifier rollback            # previous model with the labels it trusted
+```
+
+`train` writes a candidate (`<version>.joblib` and `<version>.report.json`) to the registry
+folder and never changes the live model. The report holds out whole wells, compares the
+candidate with the live model on gold labels and labels added after the live model was trained,
+lists labels that now reach 95% precision on at least 30 real cards, and recommends whether to
+promote and which labels to trust or untrust, with the exact commands. umemails sends it
+(`rod_pump_classifier_training`). Until the first promotion or trust change, the model file in
+`ROD_PUMP_HEALTH_CLASSIFIER_MODEL` stays live with its original labels (`healthy` and the
+`fluid_pound_*` levels); the first change copies it into the registry under the same version.
+Promoting a new version sends every well's next card to the LLM once.
 
 The surface load check compares the selected card's surface load range (peak minus minimum)
 with the median of the well's last 10 good archived cards from the previous 14 days. A range below

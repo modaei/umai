@@ -902,3 +902,21 @@ def test_dashboard_briefing_never_accesses_conversation_storage():
     )
     assert endpoint(payload).model_dump() == {"answer": "Shared briefing."}
     assert endpoint(payload).answer == "Shared briefing."
+
+
+def test_classifier_training_endpoint_returns_the_latest_run_and_live_model(tmp_path):
+    from umai.rod_pump_health.classifier_registry import ClassifierRegistry
+
+    settings = replace(
+        make_settings(),
+        rod_pump_health_classifier_dir=str(tmp_path / "registry"),
+        rod_pump_health_classifier_model="",
+    )
+    ClassifierRegistry(str(tmp_path / "registry")).record_run({"status": "skipped", "reason": "no labels"})
+    endpoint = route_endpoint(create_app(settings=settings), "/rod-pump-classifier/training/latest", "GET")
+
+    result = endpoint()
+
+    assert result["run"] == {"status": "skipped", "reason": "no labels"}
+    assert result["report"] is None
+    assert result["live"]["source"] == "none"

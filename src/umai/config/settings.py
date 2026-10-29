@@ -14,6 +14,8 @@ load_dotenv()
 # The committed downhole classifier; relative paths in the setting resolve from the repository root.
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_CLASSIFIER_MODEL = "models/rod_pump_downhole_classifier.joblib"
+# Trained candidates, the live model pointer and the last training run (see classifier_registry).
+DEFAULT_CLASSIFIER_DIR = "models/rod_pump_classifier"
 
 
 def _repository_path(value: str) -> str:
@@ -83,6 +85,8 @@ class Settings:
     rod_pump_health_downhole_points: int = 100
     rod_pump_health_classifier_model: str = ""
     rod_pump_health_classifier_min_confidence: float = 0.9
+    rod_pump_health_classifier_dir: str = ""
+    rod_pump_health_classifier_audit_rate: float = 0.05
     rod_pump_health_llm_refresh_days: int = 7
     rod_pump_health_routine_effort: str = "low"
     rod_pump_health_min_downhole_load_range_lb: float = 3000.0
@@ -195,6 +199,15 @@ class Settings:
             rod_pump_health_classifier_min_confidence=float(
                 os.getenv("ROD_PUMP_HEALTH_CLASSIFIER_MIN_CONFIDENCE", "0.9")
             ),
+            # Registry of trained models; until a model is promoted there, the model file above
+            # stays live with its original trusted labels.
+            rod_pump_health_classifier_dir=_repository_path(
+                os.getenv("ROD_PUMP_HEALTH_CLASSIFIER_DIR", DEFAULT_CLASSIFIER_DIR).strip()
+            ),
+            # Share of cards that could reuse a review but are sent to the LLM to audit the classifier.
+            rod_pump_health_classifier_audit_rate=float(
+                os.getenv("ROD_PUMP_HEALTH_CLASSIFIER_AUDIT_RATE", "0.05")
+            ),
             rod_pump_health_llm_refresh_days=int(os.getenv("ROD_PUMP_HEALTH_LLM_REFRESH_DAYS", "7")),
             rod_pump_health_routine_effort=os.getenv(
                 "ROD_PUMP_HEALTH_ROUTINE_EFFORT", "low"
@@ -231,6 +244,8 @@ class Settings:
             raise ValueError("ROD_PUMP_HEALTH_ROUTINE_EFFORT must be low, medium, high or xhigh.")
         if not 0 < self.rod_pump_health_classifier_min_confidence <= 1:
             raise ValueError("ROD_PUMP_HEALTH_CLASSIFIER_MIN_CONFIDENCE must be above 0 and at most 1.")
+        if not 0 <= self.rod_pump_health_classifier_audit_rate <= 1:
+            raise ValueError("ROD_PUMP_HEALTH_CLASSIFIER_AUDIT_RATE must be between 0 and 1.")
         if self.rod_pump_health_llm_refresh_days <= 0:
             raise ValueError("ROD_PUMP_HEALTH_LLM_REFRESH_DAYS must be positive.")
         if min(self.rod_pump_health_surface_baseline_cards, self.rod_pump_health_surface_baseline_days) < 3:
