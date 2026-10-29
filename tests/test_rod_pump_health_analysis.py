@@ -57,6 +57,8 @@ def problem_review(**overrides):
     }
     return {
         "health_status": "problem",
+        "pattern": "fluid_pound_moderate",
+        "pattern_confidence": "high",
         "summary": "Incomplete pump fillage.",
         "findings": [finding],
         "limitations": [],
@@ -88,6 +90,7 @@ def test_review_sends_only_text_coordinates_without_images_or_templates():
     assert result["review_status"] == "complete"
     assert result["status"] == "complete"
     assert result["health_status"] == "problem"
+    assert (result["pattern"], result["pattern_confidence"]) == ("fluid_pound_moderate", "high")
     assert result["summary"] == "Incomplete pump fillage."
     assert result["diagnosis_status"] == "candidates"
     assert result["token_usage"]["total_tokens"] == 3400
@@ -297,3 +300,44 @@ def test_response_token_usage_normalizes_langchain_and_openai_metadata():
         "output_tokens": 50,
         "total_tokens": 550,
     }
+
+
+def test_review_without_a_known_pattern_fails():
+    result = analyze(packet(), lambda _: problem_review(pattern="worn_out"))
+    assert result["review_status"] == "failed"
+    assert result["pattern"] is None
+
+
+def test_schema_and_prompt_list_every_pattern():
+    from umai.rod_pump_health.analysis import ASSESSMENT_SCHEMA, SYSTEM_PROMPT
+    from umai.rod_pump_health.labels import PATTERNS
+
+    assert ASSESSMENT_SCHEMA["properties"]["pattern"]["enum"] == list(PATTERNS)
+    assert all(f"- {name}:" in SYSTEM_PROMPT for name in PATTERNS)
+
+
+def test_pump_fillage_follows_where_the_downstroke_releases_the_load():
+    from umai.rod_pump_health.analysis import pump_fillage_percent
+
+    def card(release):
+        # Upstroke at full load, downstroke carries the load until the plunger hits fluid.
+        up = [Point(position=x, load=1000 + 9000 * min(1, x / 10)) for x in range(0, 101, 5)]
+        down = [Point(position=x, load=10000 if x > release else 1000) for x in range(100, -1, -5)]
+        return up + down
+
+    assert pump_fillage_percent(card(100)) == 100.0
+    # The load falls between 70 and 75 in; its midpoint is at 72.5.
+    assert pump_fillage_percent(card(70)) == 73.0
+    # Point order does not matter.
+    assert pump_fillage_percent(list(reversed(card(70)))) == pump_fillage_percent(card(70))
+    assert pump_fillage_percent([Point(position=0, load=1)] * 4) is None
+
+
+def test_downhole_measurements_include_fillage_and_the_prompt_grades_by_it():
+    from umai.rod_pump_health.analysis import SYSTEM_PROMPT, measure
+
+    measurements, _ = measure(packet().card)
+    assert isinstance(measurements["downhole"]["pump_fillage_percent"], float)
+    assert "pump_fillage_percent" not in measurements["surface"]
+    assert "fluid pound is mild from 75 to 90, moderate from 60 to under 75 and severe under 60" in SYSTEM_PROMPT
+    assert "gas interference is severe under 60 and moderate from 60" in SYSTEM_PROMPT

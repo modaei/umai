@@ -112,7 +112,14 @@ def analyzer():
     def reviewer(content):
         calls["review"] += 1
         assert [part["type"] for part in content] == ["text"]
-        return {"health_status": "healthy", "summary": "Normal card.", "findings": [], "limitations": []}
+        return {
+            "health_status": "healthy",
+            "pattern": "healthy",
+            "pattern_confidence": "high",
+            "summary": "Normal card.",
+            "findings": [],
+            "limitations": [],
+        }
 
     # The fixture cards span only 1,000 lb, so the absolute surface collapse limit is off.
     service = RodPumpHealthAnalyzer(

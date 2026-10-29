@@ -40,7 +40,7 @@ umai-index-operational-text = "umai.rag.index_operational_text:main"
 umai-process-rag-index-events = "umai.rag.process_index_events:main"
 umai-vector-db-migrate = "umai.rag.migrate_vector_db:main"
 umai-evaluate = "umai.evals.runner:main"
-umai-train-card-classifier = "umai.rod_pump_health.train_classifier:main"
+umai-card-classifier = "umai.rod_pump_health.classifier_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

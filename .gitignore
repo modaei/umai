@@ -13,3 +13,7 @@ docs/*
 eval-results/
 .deepeval/
 data/
+
+# Trained classifier candidates and the live pointer are created on the server.
+models/rod_pump_classifier/*
+!models/rod_pump_classifier/.gitkeep

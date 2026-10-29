@@ -10,7 +10,12 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from umai.rod_pump_health.reader import WellAnalysisRequest, analyzer_from_settings
+from umai.rod_pump_health.classifier_cli import latest_training
+from umai.rod_pump_health.reader import (
+    WellAnalysisRequest,
+    analyzer_from_settings,
+    classifier_registry,
+)
 from umai.rod_pump_health.conclusion import conclusion_analyzer_from_settings
 from umai.rod_pump_health.parameter_trends import (
     parameter_analyzer_from_settings,
@@ -110,6 +115,12 @@ def create_app(
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/rod-pump-classifier/training/latest")
+    def rod_pump_classifier_training() -> dict[str, Any]:
+        """The last classifier training run, its candidate report and the live model, for the
+        training email. Reading files only; promotion stays a manual command."""
+        return latest_training(classifier_registry(settings))
 
     @app.post("/rod-pump-health-analysis")
     def rod_pump_health_analysis(payload: WellAnalysisRequest) -> dict[str, Any]:

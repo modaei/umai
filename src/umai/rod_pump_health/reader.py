@@ -25,7 +25,8 @@ from umai.rod_pump_health.analysis import (
     health_reviewer,
     measure,
 )
-from umai.rod_pump_health.classifier import TRUSTED_LABELS, load_classifier
+from umai.rod_pump_health.classifier_registry import ClassifierRegistry
+from umai.rod_pump_health.labels import LEGACY_TRUSTED_LABELS
 from umai.rod_pump_health.surface_load import (
     DEFAULT_SURFACE_LOAD,
     PROBLEM_STATUSES,
@@ -34,8 +35,14 @@ from umai.rod_pump_health.surface_load import (
 
 logger = logging.getLogger(__name__)
 
-# Defaults for when the classifier may stand in for a fresh LLM review.
-DEFAULT_ROUTING = {"min_confidence": 0.9, "refresh_days": 7, "min_downhole_load_range_lb": 3000.0}
+# Defaults for when the classifier may stand in for a fresh LLM review. audit_rate is the share
+# of cards that could reuse a review but go to the LLM anyway, to keep checking trusted labels.
+DEFAULT_ROUTING = {
+    "min_confidence": 0.9,
+    "refresh_days": 7,
+    "min_downhole_load_range_lb": 3000.0,
+    "audit_rate": 0.0,
+}
 
 
 class RecentCardReference(BaseModel):
@@ -97,6 +104,7 @@ class RodPumpHealthAnalyzer:
         http_post=httpx.post,
         point_limits=None,
         classifier=None,
+        classifier_source=None,
         routine_reviewer=None,
         routing=None,
         surface_load=None,
@@ -110,8 +118,10 @@ class RodPumpHealthAnalyzer:
         # Maximum coordinates sent to the LLM per curve; None sends every point.
         self.point_limits = point_limits
         # Downhole classifier and the cheaper reviewer for routine healthy cards; without a
-        # classifier every card goes to the LLM.
+        # classifier every card goes to the LLM. classifier_source returns the live classifier
+        # on each analysis, so promotions and trust changes apply without a restart.
         self.classifier = classifier
+        self.classifier_source = classifier_source
         self.routine_reviewer = routine_reviewer or reviewer
         self.routing = {**DEFAULT_ROUTING, **(routing or {})}
         # Thresholds of the surface load check against the well's own recent cards.
@@ -317,12 +327,31 @@ class RodPumpHealthAnalyzer:
         }
         return AnalysisRequest(site_id=well["site_id"], well_id=well_id, card=packet_card)
 
-    def _classify(self, packet):
+    def _live_classifier(self):
+        """The registry's live classifier when there is a registry, else the fixed one."""
+        if self.classifier_source is not None:
+            try:
+                return self.classifier_source()
+            except Exception:
+                logger.exception("Dynograph classifier registry unavailable")
+                return None
+        return self.classifier
+
+    def _trusted(self, classifier) -> dict[str, float]:
+        """Labels that may reuse an LLM review, each with the confidence it needs. A threshold is
+        never below the configured minimum confidence."""
+        trusted = getattr(classifier, "trusted", None)
+        if trusted is None:
+            trusted = dict.fromkeys(LEGACY_TRUSTED_LABELS, 0.0)
+        floor = self.routing["min_confidence"]
+        return {label: max(float(threshold), floor) for label, threshold in trusted.items()}
+
+    def _classify(self, packet, classifier):
         """Classify the downhole card; None when there is no classifier or no downhole card."""
-        if self.classifier is None or not packet.card.downhole:
+        if classifier is None or not packet.card.downhole:
             return None
         try:
-            return self.classifier.classify(packet.card.downhole)
+            return classifier.classify(packet.card.downhole)
         except Exception:
             logger.exception("Dynograph classifier failed well_id=%s", packet.well_id)
             return None
@@ -443,7 +472,7 @@ class RodPumpHealthAnalyzer:
             ),
         }
 
-    def _route(self, packet, classification, saved_findings, surface=None):
+    def _route(self, packet, classification, saved_findings, surface=None, trusted=None):
         """Decide whether the last LLM review still applies to this card.
 
         Returns (reuse, routine, reason): reuse the saved review, or call the LLM, with the
@@ -463,10 +492,11 @@ class RodPumpHealthAnalyzer:
         if max(loads) - min(loads) < self.routing["min_downhole_load_range_lb"]:
             return False, False, "collapsed downhole card"
         label = classification["label"]
-        if label not in TRUSTED_LABELS:
+        trusted = self._trusted(None) if trusted is None else trusted
+        if label not in trusted:
             return False, False, f"{label} needs an LLM review"
         confidence = min(classification["health_confidence"], classification["label_confidence"])
-        if confidence < self.routing["min_confidence"]:
+        if confidence < trusted[label]:
             return False, False, f"classifier confidence {confidence:.2f} is below the threshold"
         routine = label == "healthy"
         review = saved_findings.get("llm_review") if isinstance(saved_findings, dict) else None
@@ -486,12 +516,23 @@ class RodPumpHealthAnalyzer:
             return False, routine, "previous LLM review is of a later card"
         if age_days >= self.routing["refresh_days"]:
             return False, routine, f"previous LLM review is {age_days:.0f} days old"
+        if self._audited(packet):
+            return False, routine, "audit sample: checking the classifier against the LLM"
         return True, routine, f"same {label} pattern as the LLM review of {review.get('card_reference')}"
+
+    def _audited(self, packet) -> bool:
+        """Pick a fixed share of cards by a hash of the card, so a rerun picks the same cards."""
+        rate = self.routing["audit_rate"]
+        if rate <= 0:
+            return False
+        digest = hashlib.sha256(f"{packet.well_id}:{packet.card.reference}".encode()).digest()
+        return int.from_bytes(digest[:8], "big") / 2**64 < rate
 
     def analyze(self, well_id, recent_card=None):
         """Read the selected card, reuse an unchanged saved review, or return a new result."""
         packet = self.prepare(well_id, recent_card)
-        classification = self._classify(packet)
+        classifier = self._live_classifier()
+        classification = self._classify(packet, classifier)
         surface = self._surface_load(packet)
         signature = hashlib.sha256(
             json.dumps(
@@ -528,7 +569,9 @@ class RodPumpHealthAnalyzer:
         if saved and saved["input_signature"] == signature:
             if saved_findings.get("review_status") == "complete":
                 return {**metadata, "unchanged": True, "review_status": "complete"}
-        reuse, routine, reason = self._route(packet, classification, saved_findings, surface)
+        reuse, routine, reason = self._route(
+            packet, classification, saved_findings, surface, self._trusted(classifier)
+        )
         logger.info(
             "Rod pump health well_id=%s: %s (%s)",
             well_id, "reusing LLM review" if reuse else "LLM review", reason,
@@ -596,8 +639,8 @@ class RodPumpHealthAnalyzer:
 
 
 @lru_cache(maxsize=4)
-def analyzer_from_settings(settings):
-    """Reuse operational/archive read connections; archive options fall back to operational values."""
+def database_engines(settings):
+    """Operational and archive read connections; archive options fall back to operational values."""
 
     def engine(host, port, user, password, database):
         return create_engine(
@@ -632,6 +675,23 @@ def analyzer_from_settings(settings):
         ),
         settings.db_archive_name or settings.db_name,
     )
+    return operational, archive
+
+
+@lru_cache(maxsize=4)
+def classifier_registry(settings):
+    """The downhole classifier registry; one per settings so its live-model cache is shared."""
+    return ClassifierRegistry(
+        settings.rod_pump_health_classifier_dir,
+        settings.rod_pump_health_classifier_model,
+        settings.rod_pump_health_classifier_min_confidence,
+    )
+
+
+@lru_cache(maxsize=4)
+def analyzer_from_settings(settings):
+    """Reuse the shared read connections and the live classifier of the registry."""
+    operational, archive = database_engines(settings)
     return RodPumpHealthAnalyzer(
         operational,
         archive,
@@ -642,7 +702,7 @@ def analyzer_from_settings(settings):
             "surface": settings.rod_pump_health_surface_points,
             "downhole": settings.rod_pump_health_downhole_points,
         },
-        classifier=load_classifier(settings.rod_pump_health_classifier_model),
+        classifier_source=classifier_registry(settings).active,
         routine_reviewer=lambda content: health_reviewer(
             settings, settings.rod_pump_health_routine_effort
         )(content),
@@ -650,6 +710,7 @@ def analyzer_from_settings(settings):
             "min_confidence": settings.rod_pump_health_classifier_min_confidence,
             "refresh_days": settings.rod_pump_health_llm_refresh_days,
             "min_downhole_load_range_lb": settings.rod_pump_health_min_downhole_load_range_lb,
+            "audit_rate": settings.rod_pump_health_classifier_audit_rate,
         },
         surface_load={
             "baseline_cards": settings.rod_pump_health_surface_baseline_cards,

@@ -19,11 +19,6 @@ logger = logging.getLogger(__name__)
 FORMAT = "umai-dynograph-classifier-v1"
 POINTS_PER_CARD = 100
 
-# Labels with enough field-confirmed training cards to let a card skip the LLM. Every other
-# label (gas interference, low fluid load, the synthetic failure patterns) goes to the LLM.
-TRUSTED_LABELS = frozenset(
-    {"healthy", "fluid_pound_mild", "fluid_pound_moderate", "fluid_pound_severe"}
-)
 
 
 def card_features(positions, loads, n: int = POINTS_PER_CARD) -> np.ndarray:
@@ -56,11 +51,16 @@ def card_features(positions, loads, n: int = POINTS_PER_CARD) -> np.ndarray:
 
 
 class DownholeClassifier:
-    """Predict overall health and the detailed label, each with its confidence."""
+    """Predict overall health and the detailed label, each with its confidence.
 
-    def __init__(self, models: dict, version: str):
+    ``trusted`` maps each label that may skip the LLM to its minimum confidence; it comes from
+    the classifier registry, and None means the legacy fixed label set.
+    """
+
+    def __init__(self, models: dict, version: str, trusted: dict[str, float] | None = None):
         self.models = models
         self.version = version
+        self.trusted = trusted
 
     def classify(self, points) -> dict:
         positions = [point.position if hasattr(point, "position") else point["position"] for point in points]
@@ -76,9 +76,12 @@ class DownholeClassifier:
         return result
 
 
-@lru_cache(maxsize=4)
-def load_classifier(path: str) -> DownholeClassifier | None:
-    """Load the model file once; return None (LLM for every card) when it cannot be trusted."""
+@lru_cache(maxsize=8)
+def load_classifier(path: str, version: str | None = None) -> DownholeClassifier | None:
+    """Load the model file once; return None (LLM for every card) when it cannot be trusted.
+
+    The version is the registry's name for the model, or a hash of the file when not given.
+    """
     if not path:
         return None
     file = Path(path)
@@ -134,5 +137,9 @@ def load_classifier(path: str) -> DownholeClassifier | None:
         estimator = models[target].steps[-1][1] if hasattr(models[target], "steps") else models[target]
         if "n_jobs" in estimator.get_params():
             estimator.set_params(n_jobs=1)
-    version = hashlib.sha256(file.read_bytes()).hexdigest()[:12]
-    return DownholeClassifier(models, version)
+    return DownholeClassifier(models, version or file_version(file))
+
+
+def file_version(file) -> str:
+    """Short content hash that names a model file outside the registry."""
+    return hashlib.sha256(Path(file).read_bytes()).hexdigest()[:12]

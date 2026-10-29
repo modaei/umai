@@ -210,28 +210,46 @@ def test_without_classifier_every_card_goes_to_the_llm_at_the_default_effort(rou
     assert calls["routine"] == 0
 
 
-def test_training_command_writes_a_loadable_model(tmp_path, capsys):
-    from umai.rod_pump_health.train_classifier import main
+def test_trusted_labels_and_thresholds_come_from_the_classifier(routed):
+    service, calls = routed
+    save_review(service, service.analyze(23, archived_reference(12)))
+    # A label the legacy set never trusted may reuse a review once the classifier trusts it.
+    service.classifier = FakeClassifier("gas_interference_severe")
+    service.classifier.trusted = {"gas_interference_severe": 0.95}
+    result = service.analyze(23, archived_reference(13))
+    assert result["routing"]["reason"] == "pattern changed from healthy to gas_interference_severe"
+    service.classifier = FakeClassifier(confidence=0.93)
+    service.classifier.trusted = {"healthy": 0.95}
+    assert service.analyze(23, archived_reference(14))["routing"]["reason"] == (
+        "classifier confidence 0.93 is below the threshold"
+    )
+    # A threshold below the configured minimum confidence is raised to it.
+    service.classifier.trusted = {"healthy": 0.5}
+    service.routing["min_confidence"] = 0.95
+    assert service.analyze(23, archived_reference(14))["routing"]["reason"] == (
+        "classifier confidence 0.93 is below the threshold"
+    )
+    service.routing["min_confidence"] = 0.9
+    assert service.analyze(23, archived_reference(14))["routing"]["llm_called"] is False
 
-    rng = np.random.default_rng(0)
-    rows = []
-    for card in CARDS[:2]:
-        for copy in range(8):
-            points = [
-                {"position": p["position"], "load": p["load"] + float(rng.normal(0, 20))}
-                for p in card["points"]
-            ]
-            rows.append({
-                "well": f"W{copy}", "source_card_id": f"{card['label']}{copy}",
-                "card_date": "2026-10-01", "data_points": json.dumps(points),
-                "health": card["health"], "label": card["label"],
-            })
-    import pandas as pd
 
-    training = tmp_path / "training.csv"
-    pd.DataFrame(rows).to_csv(training, index=False)
-    output = tmp_path / "model.joblib"
-    main(["--train-file", str(training), "--output", str(output), "--trees", "10", "--folds", "2"])
-    assert "Cross-validation holds out whole wells" in capsys.readouterr().out
-    classifier = load_classifier(str(output))
-    assert classifier.classify(CARDS[1]["points"])["label"] == CARDS[1]["label"]
+def test_audit_sample_sends_a_reusable_card_to_the_llm(routed):
+    service, calls = routed
+    save_review(service, service.analyze(23, archived_reference(12)))
+    service.routing["audit_rate"] = 1.0
+    result = service.analyze(23, archived_reference(14))
+    assert result["routing"] == {
+        "llm_called": True, "reason": "audit sample: checking the classifier against the LLM",
+    }
+    service.routing["audit_rate"] = 0.0
+    assert service.analyze(23, archived_reference(13))["routing"]["llm_called"] is False
+
+
+def test_live_classifier_comes_from_the_source_on_every_analysis(routed):
+    service, calls = routed
+    service.classifier = None
+    sources = iter([None, FakeClassifier()])
+    service.classifier_source = lambda: next(sources)
+    assert service.analyze(23, archived_reference(12))["classifier"] is None
+    assert service.analyze(23, archived_reference(14))["classifier"]["label"] == "healthy"
+

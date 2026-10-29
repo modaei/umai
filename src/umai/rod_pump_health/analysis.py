@@ -12,9 +12,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator, ValidationError
 
+from umai.rod_pump_health.labels import PATTERNS, pattern_guide
+
 logger = logging.getLogger(__name__)
 
-VERSION = "rod-pump-health-analysis-v12"
+VERSION = "rod-pump-health-analysis-v14"
 
 
 class Point(BaseModel):
@@ -72,6 +74,9 @@ class Finding(BaseModel):
 class Assessment(BaseModel):
     model_config = ConfigDict(extra="ignore")
     health_status: Literal["healthy", "watch", "problem"]
+    # The card's downhole pattern in the classifier's vocabulary; stored as a training label.
+    pattern: Literal[tuple(PATTERNS)]
+    pattern_confidence: Literal["low", "medium", "high"]
     summary: str = Field(min_length=1, max_length=1500)
     findings: list[Finding] = Field(default_factory=list, max_length=2)
     limitations: list[str] = Field(default_factory=list)
@@ -81,9 +86,13 @@ class Assessment(BaseModel):
 ASSESSMENT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["health_status", "summary", "findings", "limitations"],
+    "required": [
+        "health_status", "pattern", "pattern_confidence", "summary", "findings", "limitations",
+    ],
     "properties": {
         "health_status": {"type": "string", "enum": ["healthy", "watch", "problem"]},
+        "pattern": {"type": "string", "enum": list(PATTERNS)},
+        "pattern_confidence": {"type": "string", "enum": ["low", "medium", "high"]},
         "summary": {"type": "string"},
         "findings": {
             "type": "array",
@@ -146,6 +155,38 @@ def features(points: list[Point], point_order: str = "unknown") -> dict:
     if point_order == "sam1_reverse_time":
         result.update(branch_features(points, span, spread))
     return result
+
+
+def pump_fillage_percent(points: list[Point], bins: int = 100) -> float | None:
+    """Pump fillage from the downhole card shape, independent of point order.
+
+    The card's lower load envelope stays low while the plunger strokes through fluid and rises
+    where the downstroke still carries the fluid load (fluid pound or gas). Fillage is the
+    highest stroke position, as a percent of the stroke from the bottom, where that envelope is
+    below the middle of the load range. This reproduces the fillage of the rule-based training
+    labels. It means nothing for a collapsed card.
+    """
+    x, y = [p.position for p in points], [p.load for p in points]
+    span, spread = max(x) - min(x), max(y) - min(y)
+    if len(points) < 4 or span <= 0 or spread <= 0:
+        return None
+    # Resample the closed loop evenly by length so sparse corners do not leave empty bins.
+    loop = list(zip(x, y)) + [(x[0], y[0])]
+    lengths = [
+        math.hypot((b[0] - a[0]) / span, (b[1] - a[1]) / spread) for a, b in zip(loop, loop[1:])
+    ]
+    step = sum(lengths) / 2000
+    lower = [math.inf] * bins
+    for (a, b), length in zip(zip(loop, loop[1:]), lengths):
+        count = max(1, math.ceil(length / step))
+        for index in range(count):
+            share = index / count
+            position = (a[0] + (b[0] - a[0]) * share - min(x)) / span
+            load = (a[1] + (b[1] - a[1]) * share - min(y)) / spread
+            slot = min(int(position * bins), bins - 1)
+            lower[slot] = min(lower[slot], load)
+    filled = [slot for slot, load in enumerate(lower) if load < 0.5]
+    return float((max(filled) + 1) * 100 / bins) if filled else 0.0
 
 
 def branch_features(points, span, spread):
@@ -325,6 +366,8 @@ def measure(card: Card) -> tuple[dict, list[str]]:
         points = getattr(card, side)
         if points:
             measurements[side] = features(points, card.point_order)
+            if side == "downhole" and measurements[side]["status"] != "invalid":
+                measurements[side]["pump_fillage_percent"] = pump_fillage_percent(points)
         else:
             reason = card.downhole_error if side == "downhole" else "No surface points."
             measurements[side] = {"status": "invalid", "reason": reason or "No points."}
@@ -343,6 +386,8 @@ def analyze(
     measurements, limitations = measure(card)
     findings = []
     health_status = None
+    pattern = None
+    pattern_confidence = None
     summary = None
     review_status = "unavailable"
     review_error = None
@@ -361,6 +406,7 @@ def analyze(
                 raw_review = {**raw_review, "findings": raw_findings[:2]}
             review = Assessment.model_validate(raw_review)
             health_status = review.health_status
+            pattern, pattern_confidence = review.pattern, review.pattern_confidence
             summary = " ".join(review.summary.split())
             limitations.extend(" ".join(str(value).split()) for value in review.limitations)
             for finding in review.findings:
@@ -401,6 +447,8 @@ def analyze(
             else "unavailable"
         ),
         "health_status": health_status,
+        "pattern": pattern,
+        "pattern_confidence": pattern_confidence,
         "summary": summary,
         "measurements": measurements,
         "findings": findings,
@@ -436,7 +484,17 @@ SYSTEM_PROMPT = (
     "changes, and confidence low, medium or high based on how clear the defining features are and "
     "how plausible the alternatives are. Separate suspected causes from confirmed faults and give "
     "numeric values only when the data supports them. If data quality prevents a reliable "
-    "assessment, say so in limitations and the summary rather than guessing."
+    "assessment, say so in limitations and the summary rather than guessing. "
+    "Also name the one downhole pattern that best describes the card, from this list, with "
+    "pattern_confidence low, medium or high. downhole.measurements.pump_fillage_percent is the "
+    "highest stroke position, as a percent of the stroke from the bottom, where the card's "
+    "lower load envelope is below the middle of its load range. The card shape decides between "
+    "fluid pound (sharp load release when the plunger hits fluid) and gas interference "
+    "(gradual, rounded unloading); pump_fillage_percent decides the grade: fluid pound is mild "
+    "from 75 to 90, moderate from 60 to under 75 and severe under 60; gas interference is "
+    "severe under 60 and moderate from 60. Above 90 the pump is full. Ignore the fillage of a "
+    "collapsed or unreadable card. Use abnormal_shape when the card cannot be read reliably, "
+    "and other only for a clear pattern that is none of these:\n" + pattern_guide()
 )
 
 
