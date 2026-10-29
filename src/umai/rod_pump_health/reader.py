@@ -6,7 +6,7 @@ import hashlib
 import json
 import logging
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import lru_cache
 from typing import Literal
 from zoneinfo import ZoneInfo
@@ -16,8 +16,21 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
 
-from umai.rod_pump_health.analysis import AnalysisRequest, VERSION, analyze, health_reviewer, measure
+from umai.rod_pump_health.analysis import (
+    VERSION,
+    AnalysisRequest,
+    Point,
+    analyze,
+    coordinates,
+    health_reviewer,
+    measure,
+)
 from umai.rod_pump_health.classifier import TRUSTED_LABELS, load_classifier
+from umai.rod_pump_health.surface_load import (
+    DEFAULT_SURFACE_LOAD,
+    PROBLEM_STATUSES,
+    surface_load_check,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +99,7 @@ class RodPumpHealthAnalyzer:
         classifier=None,
         routine_reviewer=None,
         routing=None,
+        surface_load=None,
     ):
         self.engine = engine
         self.archive_engine = archive_engine
@@ -100,6 +114,8 @@ class RodPumpHealthAnalyzer:
         self.classifier = classifier
         self.routine_reviewer = routine_reviewer or reviewer
         self.routing = {**DEFAULT_ROUTING, **(routing or {})}
+        # Thresholds of the surface load check against the well's own recent cards.
+        self.surface_load = {**DEFAULT_SURFACE_LOAD, **(surface_load or {})}
 
     def _well(self, well_id):
         """Resolve site ownership and configured scope from the operational database."""
@@ -311,12 +327,135 @@ class RodPumpHealthAnalyzer:
             logger.exception("Dynograph classifier failed well_id=%s", packet.well_id)
             return None
 
-    def _route(self, packet, classification, saved_findings):
+    def _surface_history(self, well_id, card):
+        """Earlier archived cards of the well within the baseline window, with peak and minimum load.
+
+        Loads come from the nightly metrics; cards archived since the last run use their points.
+        """
+        captured = int(card.timestamp.timestamp())
+        start = captured - self.surface_load["baseline_days"] * 86400
+        with self.archive_engine.connect() as connection:
+            rows = connection.execute(
+                text(
+                    "SELECT c.id, c.card_timestamp, c.source_card_id, m.surface_max_load, "
+                    "m.surface_min_load, CASE WHEN m.surface_max_load IS NULL OR "
+                    "m.surface_min_load IS NULL THEN c.data_points END AS data_points "
+                    "FROM rod_pump_card_archive c LEFT JOIN rod_pump_card_archive_metrics m "
+                    "ON m.rod_pump_card_archive_id=c.id WHERE c.well_id=:well "
+                    "AND LOWER(c.card_type)='current' "
+                    # The pull range lets MySQL use the (well_id, pull_timestamp) index.
+                    "AND c.pull_timestamp BETWEEN :pull_from AND :pull_until "
+                    "AND c.card_timestamp >= :start AND c.card_timestamp < :captured "
+                    "ORDER BY c.card_timestamp, c.id"
+                ),
+                {
+                    "well": well_id,
+                    "pull_from": start - 86400,
+                    "pull_until": (card.pull_timestamp or captured) + 86400,
+                    "start": start,
+                    "captured": captured,
+                },
+            ).mappings().all()
+        history = {}
+        for row in rows:
+            if row["source_card_id"] == card.source_card_id:
+                continue
+            if row["surface_max_load"] is not None and row["surface_min_load"] is not None:
+                loads = [float(row["surface_max_load"]), float(row["surface_min_load"])]
+            else:
+                loads = [point["load"] for point in physical_points(decoded(row["data_points"], []))]
+            if not loads:
+                continue
+            # Raw exports repeat a card; keep one row per controller card.
+            history[row["source_card_id"]] = {
+                "id": row["id"],
+                "time": int(row["card_timestamp"]),
+                "max_load": max(loads),
+                "min_load": min(loads),
+            }
+        return sorted(history.values(), key=lambda entry: entry["time"])
+
+    def _recent_shutdowns(self, well_id, before):
+        """Shutdowns of the well that ended within a day before ``before``."""
+        moment = before.astimezone(self.timezone).replace(tzinfo=None)
+        with self.engine.connect() as connection:
+            rows = connection.execute(
+                text(
+                    "SELECT `end`, downtime_code FROM well_shutdowns WHERE well_id=:well "
+                    "AND `end` IS NOT NULL AND `end` BETWEEN :start AND :until"
+                ),
+                {"well": well_id, "start": moment - timedelta(days=1), "until": moment},
+            ).mappings().all()
+        shutdowns = []
+        for row in rows:
+            end = row["end"]
+            end = datetime.fromisoformat(str(end)) if not isinstance(end, datetime) else end
+            # Shutdown times are stored without an offset, in the app timezone.
+            shutdowns.append({"end": end.replace(tzinfo=self.timezone), "downtime_code": row["downtime_code"]})
+        return shutdowns
+
+    def _surface_load(self, packet):
+        """Run the surface load check; None when the card has no usable surface curve or it fails."""
+        card = packet.card
+        loads = [point.load for point in card.surface]
+        if not loads:
+            return None
+        try:
+            history = self._surface_history(packet.well_id, card)
+            current = {"time": int(card.timestamp.timestamp()), "max_load": max(loads), "min_load": min(loads)}
+            check = surface_load_check(history, current, self.timezone, self.surface_load)
+            if check["status"] in PROBLEM_STATUSES:
+                # Only a collapse needs the shutdown history; run the check again with it.
+                since = datetime.fromisoformat(check["since"])
+                check = surface_load_check(
+                    history, current, self.timezone, self.surface_load,
+                    shutdowns=self._recent_shutdowns(packet.well_id, since),
+                )
+                check["normal_card"] = self._normal_card(check.pop("normal_card_id"))
+            return check
+        except Exception:
+            logger.exception("Surface load check failed well_id=%s", packet.well_id)
+            return None
+
+    def _normal_card(self, archive_id):
+        """The last good card before a collapse, drawn under the current card on the page."""
+        if archive_id is None:
+            return None
+        with self.archive_engine.connect() as connection:
+            row = connection.execute(
+                text(
+                    "SELECT id, card_timestamp, info, data_points FROM rod_pump_card_archive "
+                    "WHERE id=:id"
+                ),
+                {"id": archive_id},
+            ).mappings().first()
+        if row is None:
+            return None
+        header = decoded(row["info"], {})
+        header = header if isinstance(header, dict) else {}
+        points = physical_points(decoded(row["data_points"], []), 100, header.get("number_points") == 0)
+        limit = (self.point_limits or {}).get("surface")
+        return {
+            "reference": f"archive:{row['id']}",
+            "captured_at": datetime.fromtimestamp(int(row["card_timestamp"]), self.timezone).isoformat(),
+            "points": coordinates(
+                [Point(**point) for point in points], "sam1_reverse_time", limit
+            ),
+        }
+
+    def _route(self, packet, classification, saved_findings, surface=None):
         """Decide whether the last LLM review still applies to this card.
 
         Returns (reuse, routine, reason): reuse the saved review, or call the LLM, with the
         routine (cheaper) effort when the card is a confident, ordinary healthy card.
         """
+        if surface and surface["status"] in PROBLEM_STATUSES:
+            ratio = surface["range_ratio"]
+            share = f"range {ratio:.0%} of normal" if ratio is not None else (
+                f"range {surface['load_range']:,} lb"
+            )
+            kind = "collapse" if surface["status"] == "collapse" else "dropping"
+            return False, False, f"surface load {kind} ({share})"
         if classification is None:
             reason = "no downhole card" if not packet.card.downhole else "classifier unavailable"
             return False, False, reason
@@ -353,6 +492,7 @@ class RodPumpHealthAnalyzer:
         """Read the selected card, reuse an unchanged saved review, or return a new result."""
         packet = self.prepare(well_id, recent_card)
         classification = self._classify(packet)
+        surface = self._surface_load(packet)
         signature = hashlib.sha256(
             json.dumps(
                 [
@@ -360,6 +500,7 @@ class RodPumpHealthAnalyzer:
                     VERSION,
                     self.point_limits,
                     classification and classification["model_version"],
+                    surface and surface["status"],
                 ],
                 sort_keys=True,
             ).encode()
@@ -387,7 +528,7 @@ class RodPumpHealthAnalyzer:
         if saved and saved["input_signature"] == signature:
             if saved_findings.get("review_status") == "complete":
                 return {**metadata, "unchanged": True, "review_status": "complete"}
-        reuse, routine, reason = self._route(packet, classification, saved_findings)
+        reuse, routine, reason = self._route(packet, classification, saved_findings, surface)
         logger.info(
             "Rod pump health well_id=%s: %s (%s)",
             well_id, "reusing LLM review" if reuse else "LLM review", reason,
@@ -397,7 +538,8 @@ class RodPumpHealthAnalyzer:
         else:
             effort = "routine" if routine else "default"
             result = analyze(
-                packet, self.routine_reviewer if routine else self.reviewer, self.point_limits
+                packet, self.routine_reviewer if routine else self.reviewer, self.point_limits,
+                surface_load=surface,
             )
             result["review_source"] = "llm"
             if result["review_status"] == "complete":
@@ -421,6 +563,7 @@ class RodPumpHealthAnalyzer:
             **result,
             **metadata,
             "classifier": classification,
+            "surface_load": surface,
             "routing": {"llm_called": not reuse, "reason": reason},
             "unchanged": False,
             "window_start_at": captured,
@@ -507,5 +650,12 @@ def analyzer_from_settings(settings):
             "min_confidence": settings.rod_pump_health_classifier_min_confidence,
             "refresh_days": settings.rod_pump_health_llm_refresh_days,
             "min_downhole_load_range_lb": settings.rod_pump_health_min_downhole_load_range_lb,
+        },
+        surface_load={
+            "baseline_cards": settings.rod_pump_health_surface_baseline_cards,
+            "baseline_days": settings.rod_pump_health_surface_baseline_days,
+            "collapse_ratio": settings.rod_pump_health_surface_collapse_ratio,
+            "watch_ratio": settings.rod_pump_health_surface_watch_ratio,
+            "low_load_range_lb": settings.rod_pump_health_surface_low_load_range_lb,
         },
     )

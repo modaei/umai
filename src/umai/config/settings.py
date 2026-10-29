@@ -86,6 +86,11 @@ class Settings:
     rod_pump_health_llm_refresh_days: int = 7
     rod_pump_health_routine_effort: str = "low"
     rod_pump_health_min_downhole_load_range_lb: float = 3000.0
+    rod_pump_health_surface_baseline_cards: int = 10
+    rod_pump_health_surface_baseline_days: int = 14
+    rod_pump_health_surface_collapse_ratio: float = 0.5
+    rod_pump_health_surface_watch_ratio: float = 0.8
+    rod_pump_health_surface_low_load_range_lb: float = 3000.0
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -197,6 +202,22 @@ class Settings:
             rod_pump_health_min_downhole_load_range_lb=float(
                 os.getenv("ROD_PUMP_HEALTH_MIN_DOWNHOLE_LOAD_RANGE_LB", "3000")
             ),
+            # Surface load check: each card against the median of the well's recent good cards.
+            rod_pump_health_surface_baseline_cards=int(
+                os.getenv("ROD_PUMP_HEALTH_SURFACE_BASELINE_CARDS", "10")
+            ),
+            rod_pump_health_surface_baseline_days=int(
+                os.getenv("ROD_PUMP_HEALTH_SURFACE_BASELINE_DAYS", "14")
+            ),
+            rod_pump_health_surface_collapse_ratio=float(
+                os.getenv("ROD_PUMP_HEALTH_SURFACE_COLLAPSE_RATIO", "0.5")
+            ),
+            rod_pump_health_surface_watch_ratio=float(
+                os.getenv("ROD_PUMP_HEALTH_SURFACE_WATCH_RATIO", "0.8")
+            ),
+            rod_pump_health_surface_low_load_range_lb=float(
+                os.getenv("ROD_PUMP_HEALTH_SURFACE_LOW_LOAD_RANGE_LB", "3000")
+            ),
         )
 
     def validate(self) -> None:
@@ -212,6 +233,18 @@ class Settings:
             raise ValueError("ROD_PUMP_HEALTH_CLASSIFIER_MIN_CONFIDENCE must be above 0 and at most 1.")
         if self.rod_pump_health_llm_refresh_days <= 0:
             raise ValueError("ROD_PUMP_HEALTH_LLM_REFRESH_DAYS must be positive.")
+        if min(self.rod_pump_health_surface_baseline_cards, self.rod_pump_health_surface_baseline_days) < 3:
+            raise ValueError(
+                "ROD_PUMP_HEALTH_SURFACE_BASELINE_CARDS and ROD_PUMP_HEALTH_SURFACE_BASELINE_DAYS "
+                "must be at least 3."
+            )
+        if not 0 < self.rod_pump_health_surface_collapse_ratio < self.rod_pump_health_surface_watch_ratio <= 1:
+            raise ValueError(
+                "ROD_PUMP_HEALTH_SURFACE_COLLAPSE_RATIO must be above 0 and below "
+                "ROD_PUMP_HEALTH_SURFACE_WATCH_RATIO, which must be at most 1."
+            )
+        if self.rod_pump_health_surface_low_load_range_lb < 0:
+            raise ValueError("ROD_PUMP_HEALTH_SURFACE_LOW_LOAD_RANGE_LB must not be negative.")
         if min(self.rod_pump_health_surface_points, self.rod_pump_health_downhole_points) < 3:
             raise ValueError(
                 "ROD_PUMP_HEALTH_SURFACE_POINTS and ROD_PUMP_HEALTH_DOWNHOLE_POINTS must be at least 3."
