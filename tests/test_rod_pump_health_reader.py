@@ -40,7 +40,16 @@ def analyzer():
                 "findings TEXT)"
             )
         )
+        connection.execute(
+            text("CREATE TABLE well_shutdowns(well_id INTEGER, start TEXT, end TEXT, downtime_code TEXT)")
+        )
     with archive.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE rod_pump_card_archive_metrics(rod_pump_card_archive_id INTEGER, "
+                "surface_max_load REAL, surface_min_load REAL)"
+            )
+        )
         connection.execute(
             text(
                 "CREATE TABLE rod_pump_card_archive(id INTEGER, well_id INTEGER, "
@@ -66,6 +75,12 @@ def analyzer():
                     "reasons": json.dumps(["daily_baseline"]),
                 },
             )
+            if index < 10:
+                # Cards archived since the last nightly run have no metrics yet.
+                connection.execute(
+                    text("INSERT INTO rod_pump_card_archive_metrics VALUES(:id,1000,0)"),
+                    {"id": index + 1},
+                )
     calls = {"report": [], "review": 0}
 
     def post(url, **kwargs):
@@ -99,7 +114,11 @@ def analyzer():
         assert [part["type"] for part in content] == ["text"]
         return {"health_status": "healthy", "summary": "Normal card.", "findings": [], "limitations": []}
 
-    service = RodPumpHealthAnalyzer(operational, archive, "UTC", "http://reports", reviewer, post)
+    # The fixture cards span only 1,000 lb, so the absolute surface collapse limit is off.
+    service = RodPumpHealthAnalyzer(
+        operational, archive, "UTC", "http://reports", reviewer, post,
+        surface_load={"low_load_range_lb": 0},
+    )
     yield service, calls
     operational.dispose()
     archive.dispose()

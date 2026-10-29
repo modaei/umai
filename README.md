@@ -191,6 +191,22 @@ ROD_PUMP_HEALTH_ROUTINE_EFFORT=low
 ROD_PUMP_HEALTH_MIN_DOWNHOLE_LOAD_RANGE_LB=3000
 ```
 
+The surface load check compares the selected card's surface load range (peak minus minimum)
+with the median of the well's last 10 good archived cards from the previous 14 days. A range below
+half of normal or under 3,000 lb is a collapse (lost fluid load: tubing leak, rod part, pump not
+lifting) and below 80% is load dropping. Either one sends the card to the LLM with the history, and
+the result is returned as `surface_load` with the collapse start, the last normal card, a trend of
+peak and minimum loads, and whether it started within 12 hours after a recorded shutdown. Loads
+come from `rod_pump_card_archive_metrics`; cards without metrics yet use their points.
+
+```bash
+ROD_PUMP_HEALTH_SURFACE_BASELINE_CARDS=10
+ROD_PUMP_HEALTH_SURFACE_BASELINE_DAYS=14
+ROD_PUMP_HEALTH_SURFACE_COLLAPSE_RATIO=0.5
+ROD_PUMP_HEALTH_SURFACE_WATCH_RATIO=0.8
+ROD_PUMP_HEALTH_SURFACE_LOW_LOAD_RANGE_LB=3000
+```
+
 Retrain from labeled card CSVs (`well`, `source_card_id`, `card_date`, `data_points`,
 `health`, `label`); when a card is in more than one file, the last file wins. The report
 holds out whole wells:

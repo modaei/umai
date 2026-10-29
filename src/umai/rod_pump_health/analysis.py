@@ -248,7 +248,16 @@ def coordinates(points: list[Point], point_order: str, limit: int | None = None)
     return reduce_points([[round(point.position, 1), round(point.load)] for point in ordered], limit)
 
 
-def evidence(card: Card, measurements: dict, point_limits: dict | None = None) -> dict:
+# Surface load check fields the LLM gets; the trend, comparison card and hint are for the page.
+SURFACE_LOAD_EVIDENCE = (
+    "status", "load_range", "normal", "range_ratio", "since", "cards", "last_normal_card_at",
+    "card_level_pct", "recovering", "after_shutdown",
+)
+
+
+def evidence(
+    card: Card, measurements: dict, point_limits: dict | None = None, surface_load: dict | None = None
+) -> dict:
     """Build the text-only packet: header, measurements and coordinates for both card sides."""
     limits = point_limits or {}
     header = {
@@ -272,6 +281,14 @@ def evidence(card: Card, measurements: dict, point_limits: dict | None = None) -
         downhole["points"] = coordinates(card.downhole, card.point_order, limits.get("downhole"))
     else:
         downhole["unavailable"] = card.downhole_error or "No calculated downhole card."
+    surface = {
+        "measurements": measurements["surface"],
+        "points": coordinates(card.surface, card.point_order, limits.get("surface")),
+    }
+    if surface_load:
+        surface["load_history"] = {
+            key: surface_load[key] for key in SURFACE_LOAD_EVIDENCE if key in surface_load
+        }
     return {
         "card_reference": card.reference,
         "captured_at": card.timestamp.isoformat(),
@@ -281,10 +298,7 @@ def evidence(card: Card, measurements: dict, point_limits: dict | None = None) -
             f"[position_in, load_lb] pairs in {order}, down-sampled to keep the card shape; "
             "measurements use every controller point"
         ),
-        "surface": {
-            "measurements": measurements["surface"],
-            "points": coordinates(card.surface, card.point_order, limits.get("surface")),
-        },
+        "surface": surface,
         "downhole": downhole,
         "calculation_warnings": card.warnings,
     }
@@ -321,7 +335,9 @@ def measure(card: Card) -> tuple[dict, list[str]]:
     return measurements, limitations
 
 
-def analyze(packet: AnalysisRequest, reviewer, point_limits: dict | None = None) -> dict:
+def analyze(
+    packet: AnalysisRequest, reviewer, point_limits: dict | None = None, surface_load: dict | None = None
+) -> dict:
     """Measure the full card, send down-sampled coordinates as text and keep the assessment."""
     card = packet.card
     measurements, limitations = measure(card)
@@ -332,7 +348,7 @@ def analyze(packet: AnalysisRequest, reviewer, point_limits: dict | None = None)
     review_error = None
     token_usage = None
     if any(measurements[side]["status"] != "invalid" for side in measurements):
-        content = [{"type": "text", "text": json.dumps(evidence(card, measurements, point_limits), default=str)}]
+        content = [{"type": "text", "text": json.dumps(evidence(card, measurements, point_limits, surface_load), default=str)}]
         stage = "LLM request"
         try:
             raw_review = reviewer(content)
@@ -405,6 +421,12 @@ SYSTEM_PROMPT = (
     "(pump fillage, fluid pound, gas interference, gas lock, traveling or standing valve leak, worn "
     "pump, tagging, unanchored tubing, sticking, parted rods) and use the surface card for load "
     "range, rod loading and data quality. "
+    "surface.load_history, when present, compares this card's surface load range (peak minus "
+    "minimum) with the median of the well's recent good cards: collapse means the range fell "
+    "below half of normal or under 3,000 lb, load_dropping below 80%. A collapse while pumping "
+    "means the pump lost its fluid load (tubing leak, rod part, unseated or worn pump, pump not "
+    "lifting); weigh it with the downhole card, and note when it started right after a shutdown, "
+    "since the fluid column may still be refilling. "
     "Return health_status: healthy for a normal full or near-full pump card that needs no action; "
     "watch for a developing or minor issue worth monitoring or a setpoint review; problem for a "
     "clear fault that needs field action. Give a one or two sentence summary for an operator. "
