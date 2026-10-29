@@ -919,4 +919,5 @@ def test_classifier_training_endpoint_returns_the_latest_run_and_live_model(tmp_
 
     assert result["run"] == {"status": "skipped", "reason": "no labels"}
     assert result["report"] is None
+    assert result["latest_candidate"] is None
     assert result["live"]["source"] == "none"

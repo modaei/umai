@@ -195,6 +195,11 @@ def test_cli_status_untrust_and_latest_training(trained, monkeypatch, capsys):
     latest = classifier_cli.latest_training(registry)
     assert latest["run"]["version"] == report["version"]
     assert latest["report"]["version"] == report["version"]
+    assert latest["latest_candidate"]["version"] == report["version"]
+    registry.record_run({"status": "skipped", "reason": "only 0 new labels"})
+    latest = classifier_cli.latest_training(registry)
+    assert latest["report"] is None
+    assert latest["latest_candidate"]["version"] == report["version"]
     assert "healthy" not in latest["live"]["trusted"]
 
 

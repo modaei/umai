@@ -159,10 +159,16 @@ def main(argv=None) -> int:
 
 
 def latest_training(registry) -> dict:
-    """The last training run and, when it trained a candidate, that candidate's report."""
+    """The last training run and, when it trained a candidate, that candidate's report.
+
+    latest_candidate is the newest trained candidate, so an email about a skipped or failed run
+    can still say whether an earlier candidate is waiting to be promoted.
+    """
     run = registry.latest_run()
     report = registry.report(run.get("version")) if run else None
-    return {"run": run, "report": report, "live": registry.state()}
+    candidates = registry.candidates()
+    latest = registry.report(candidates[-1]) if candidates else None
+    return {"run": run, "report": report, "latest_candidate": latest, "live": registry.state()}
 
 
 if __name__ == "__main__":
