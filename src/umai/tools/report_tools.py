@@ -214,8 +214,9 @@ def _summarize_allocation_rows(
         }
 
     selected_rows = []
+    report_flags = _allocation_report_flags(rows)
     for row in rows:
-        if not isinstance(row, dict):
+        if not isinstance(row, dict) or not _is_well_allocation_row(row):
             continue
         row_name = str(row.get("name") or "")
         if well_names is not None and row_name not in well_names:
@@ -237,12 +238,15 @@ def _summarize_allocation_rows(
             except (TypeError, ValueError):
                 continue
 
-    return {
+    result = {
         "ok": True,
         "matched_well_count": len(selected_rows),
         "matched_wells": [row.get("name") for row in selected_rows if row.get("name")],
         "totals": {key: round(value, 2) for key, value in totals.items()},
     }
+    if report_flags:
+        result["report_flags"] = report_flags
+    return result
 
 
 def _list_allocation_rows(
@@ -265,8 +269,9 @@ def _list_allocation_rows(
 
     day_count = _inclusive_day_count(start_date, end_date)
     selected_rows = []
+    report_flags = _allocation_report_flags(rows)
     for row in rows:
-        if not isinstance(row, dict):
+        if not isinstance(row, dict) or not _is_well_allocation_row(row):
             continue
         row_name = str(row.get("name") or "")
         if well_names is not None and row_name not in well_names:
@@ -282,7 +287,7 @@ def _list_allocation_rows(
         key=lambda row: _numeric_sort_value(row.get(sort_key)),
         reverse=sort_direction != "asc",
     )
-    return {
+    result = {
         "ok": True,
         "matched_well_count": len(selected_rows),
         "sort_by": sort_key,
@@ -290,6 +295,23 @@ def _list_allocation_rows(
         "limit": limit,
         "rows": selected_rows[:limit],
     }
+    if report_flags:
+        result["report_flags"] = report_flags
+    return result
+
+
+def _is_well_allocation_row(row: dict[str, Any]) -> bool:
+    # Allocation reports may append an "Unallocated" row for site volume that no
+    # well could take; it is not a well and must not count toward well totals.
+    return row.get("row_type", "well") == "well"
+
+
+def _allocation_report_flags(rows: list[Any]) -> list[str]:
+    flags: list[str] = []
+    for row in rows:
+        if isinstance(row, dict) and not _is_well_allocation_row(row):
+            flags.extend(str(flag) for flag in row.get("flags") or [])
+    return flags
 
 
 def _matches_allocation_row_filters(
@@ -337,6 +359,8 @@ def _compact_allocation_row(
     }
     if row.get("onrr_code_description") is not None:
         compact["onrr_code_description"] = row.get("onrr_code_description")
+    if row.get("flags"):
+        compact["flags"] = row.get("flags")
     for key in _allocation_metric_keys(allocation_type):
         value = row.get(key)
         if value is None:

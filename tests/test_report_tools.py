@@ -372,6 +372,52 @@ def test_list_well_allocation_returns_ranked_per_well_rows():
     assert result["rows"][0]["daily_avg_allocated_oil"] == 19.8
 
 
+class FakeFlaggedAllocationReportClient:
+    def run_report(self, site_id, report_name, start_date, end_date):
+        return [
+            {
+                "name": "HARTZOG DRAW UNIT 1001",
+                "onrr_code": "POW",
+                "total_allocated_oil": 10,
+                "flags": ["Well test up to 90 days old used (limit 60)"],
+                "row_type": "well",
+            },
+            {
+                "name": "Unallocated",
+                "onrr_code": None,
+                "total_allocated_oil": 40,
+                "flags": ["Oil production on 1 day(s) had no producing well with a test rate"],
+                "row_type": "unallocated",
+            },
+        ]
+
+
+def test_allocation_tools_exclude_unallocated_row_and_surface_flags():
+    tools = build_report_tools(
+        FakeFlaggedAllocationReportClient(),
+        4,
+        "HARTZOG DRAW",
+        well_filter_client=FakeWellFilterClient(),
+    )
+    args = {
+        "allocation_type": "production",
+        "start_date": "2026-06-01",
+        "end_date": "2026-06-01",
+    }
+
+    summary = json.loads(tool_by_name(tools, "summarize_well_allocation").invoke(args))
+    listing = json.loads(tool_by_name(tools, "list_well_allocation").invoke(args))
+
+    assert summary["matched_wells"] == ["HARTZOG DRAW UNIT 1001"]
+    assert summary["totals"]["total_allocated_oil"] == 10.0
+    assert summary["report_flags"] == [
+        "Oil production on 1 day(s) had no producing well with a test rate"
+    ]
+    assert [row["name"] for row in listing["rows"]] == ["HARTZOG DRAW UNIT 1001"]
+    assert listing["rows"][0]["flags"] == ["Well test up to 90 days old used (limit 60)"]
+    assert listing["report_flags"] == summary["report_flags"]
+
+
 def test_list_well_allocation_applies_well_filters():
     tools = build_report_tools(
         FakeAllocationReportClient(),
