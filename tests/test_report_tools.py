@@ -390,7 +390,7 @@ class FakeFlaggedAllocationReportClient:
                 "name": "Unallocated",
                 "onrr_code": None,
                 "total_oil": 40,
-                "flags": ["Oil production on 1 day(s) had no producing well with a test rate"],
+                "flags": ["Oil production on 1 day(s) at Battery 1 had no producing well with a test rate"],
                 "row_type": "unallocated",
             },
         ]
@@ -415,7 +415,7 @@ def test_allocation_tools_exclude_unallocated_row_and_surface_flags():
     assert summary["matched_wells"] == ["HARTZOG DRAW UNIT 1001"]
     assert summary["totals"]["total_oil"] == 10.0
     assert summary["report_flags"] == [
-        "Oil production on 1 day(s) had no producing well with a test rate"
+        "Oil production on 1 day(s) at Battery 1 had no producing well with a test rate"
     ]
     assert [row["name"] for row in listing["rows"]] == ["HARTZOG DRAW UNIT 1001"]
     assert listing["rows"][0]["flags"] == ["Well test up to 90 days old used (limit 60)"]
