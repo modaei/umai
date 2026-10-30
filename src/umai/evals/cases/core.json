@@ -473,16 +473,19 @@
       "answer_relevancy",
       "correctness"
     ],
-    "expected_output": "Resolve numeric well 5823 and return current rod-pump health, diagnosis, severity, confidence, evidence, and recommendation.",
+    "expected_output": "Resolve well 5823 and return its saved rod-pump health status, summary, findings with confidence and recommended actions, and when the review was saved.",
     "expected_tool_calls": [
       {
-        "tool": "analyze_rod_pump",
+        "tool": "get_rod_pump_health",
         "arguments": {
           "well_name": {
             "contains": "5823"
           }
         }
       }
+    ],
+    "forbidden_tools": [
+      "request_rod_pump_health_rerun"
     ]
   },
   {
@@ -499,16 +502,19 @@
       "answer_relevancy",
       "correctness"
     ],
-    "expected_output": "Resolve numeric well 5823 and return current rod-pump health, diagnosis, severity, confidence, evidence, and recommendation.",
+    "expected_output": "Resolve well 5823 and return its saved rod-pump health status, summary, findings with confidence and recommended actions, and when the review was saved.",
     "expected_tool_calls": [
       {
-        "tool": "analyze_rod_pump",
+        "tool": "get_rod_pump_health",
         "arguments": {
           "well_name": {
             "contains": "5823"
           }
         }
       }
+    ],
+    "forbidden_tools": [
+      "request_rod_pump_health_rerun"
     ]
   },
   {
@@ -518,10 +524,7 @@
     "site_id": 4,
     "current_date": "2026-07-06",
     "required_phrases": [
-      "health",
-      "diagnosis",
-      "severity",
-      "confidence"
+      "health"
     ],
     "forbidden_phrases": [
       "couldn\u2019t find",
@@ -531,30 +534,79 @@
       "answer_relevancy",
       "correctness"
     ],
-    "expected_output": "Regression success case using the exact Ometrics well name; return health score, diagnosis, severity, confidence, evidence, and recommendation.",
+    "expected_output": "Resolve well 5823 and return its saved rod-pump health status, summary, findings with confidence and recommended actions, and when the review was saved.",
     "expected_tool_calls": [
       {
-        "tool": "analyze_rod_pump",
+        "tool": "get_rod_pump_health",
         "arguments": {
           "well_name": {
             "contains": "5823"
           }
         }
       }
+    ],
+    "forbidden_tools": [
+      "request_rod_pump_health_rerun"
     ]
   },
   {
-    "id": "rod-pump-health-ranking-chat-guardrail",
+    "id": "rod-pump-health-site-ranking",
     "category": "rod_pump",
     "question": "Rank all rod-pump wells by current health",
     "site_id": 4,
     "current_date": "2026-07-06",
     "forbidden_tools": [
-      "analyze_rod_pump"
+      "request_rod_pump_health_rerun",
+      "get_rod_pump_health"
     ],
-    "required_phrases": [
-      "scheduled"
+    "expected_tool_calls": [
+      {
+        "tool": "list_rod_pump_health",
+        "arguments": {}
+      }
     ],
+    "required_phrases": [],
+    "metrics": [],
+    "deterministic": true
+  },
+  {
+    "id": "rod-pump-health-saved-does-not-rerun",
+    "category": "rod_pump",
+    "question": "what is the health status of well 3051?",
+    "site_id": 4,
+    "forbidden_tools": [
+      "request_rod_pump_health_rerun"
+    ],
+    "expected_tool_calls": [
+      {
+        "tool": "get_rod_pump_health",
+        "arguments": {
+          "well_name": {
+            "contains": "3051"
+          }
+        }
+      }
+    ],
+    "required_phrases": [],
+    "metrics": [],
+    "deterministic": true
+  },
+  {
+    "id": "rod-pump-health-explicit-rerun",
+    "category": "rod_pump",
+    "question": "rerun the health check for well 3051",
+    "site_id": 4,
+    "expected_tool_calls": [
+      {
+        "tool": "request_rod_pump_health_rerun",
+        "arguments": {
+          "well_name": {
+            "contains": "3051"
+          }
+        }
+      }
+    ],
+    "required_phrases": [],
     "metrics": [],
     "deterministic": true
   },
@@ -565,11 +617,11 @@
     "site_id": 4,
     "current_date": "2026-07-06",
     "forbidden_tools": [
-      "analyze_rod_pump"
+      "get_rod_pump_health",
+      "list_rod_pump_health",
+      "request_rod_pump_health_rerun"
     ],
-    "required_phrases": [
-      "scheduled"
-    ],
+    "required_phrases": [],
     "metrics": [],
     "deterministic": true
   },
@@ -580,11 +632,11 @@
     "site_id": 4,
     "current_date": "2026-07-06",
     "forbidden_tools": [
-      "analyze_rod_pump"
+      "get_rod_pump_health",
+      "list_rod_pump_health",
+      "request_rod_pump_health_rerun"
     ],
-    "required_phrases": [
-      "scheduled"
-    ],
+    "required_phrases": [],
     "metrics": [],
     "deterministic": true
   },

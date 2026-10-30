@@ -253,6 +253,15 @@ def _looks_like_domain_identifier(question: str) -> bool:
         or _looks_like_data_point_trend_lookup(question)
         or _looks_like_operational_identifier_lookup(question)
         or _looks_like_bare_well_status_question(question, tokens)
+        or _looks_like_well_health_request(question)
+    )
+
+
+def _looks_like_well_health_request(question: str) -> bool:
+    """Accept health shorthand for a numbered well, e.g. "rerun health for 3051"."""
+    return bool(
+        re.search(r"\bhealth\b", question, flags=re.IGNORECASE)
+        and re.search(r"\b\d{3,6}\b", question)
     )
 
 

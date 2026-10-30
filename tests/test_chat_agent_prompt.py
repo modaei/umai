@@ -547,9 +547,14 @@ def test_health_tool_is_only_available_with_explicit_current_health_word():
             return self
 
     @tool
-    def analyze_rod_pump(well_name: str) -> str:
-        """Analyze rod-pump health."""
-        raise AssertionError('This test should not invoke health analysis')
+    def get_rod_pump_health(well_name: str) -> str:
+        """Read saved rod-pump health."""
+        raise AssertionError('This test should not invoke health tools')
+
+    @tool
+    def request_rod_pump_health_rerun(well_name: str) -> str:
+        """Request a new rod-pump health check."""
+        raise AssertionError('This test should not invoke health tools')
 
     @tool
     def get_data_point_values(data_point_name: str) -> str:
@@ -565,10 +570,11 @@ def test_health_tool_is_only_available_with_explicit_current_health_word():
         model = ToolCaptureModel()
         answer_chat_question(
             model=model,
-            tools=[analyze_rod_pump, get_data_point_values],
+            tools=[get_rod_pump_health, request_rod_pump_health_rerun, get_data_point_values],
             site_id=4,
             history=[{'role': 'user', 'content': 'Analyze health for well 5823'}],
             question=question,
         )
-        assert ('analyze_rod_pump' in model.tool_names) is expected
+        assert ('get_rod_pump_health' in model.tool_names) is expected
+        assert ('request_rod_pump_health_rerun' in model.tool_names) is expected
         assert 'get_data_point_values' in model.tool_names

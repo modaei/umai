@@ -26,11 +26,10 @@ from umai.api.schemas import (
     DashboardBriefingResponse,
     ChatRequest,
     ChatResponse,
-    RodPumpHealthReportRequest,
     WeeklyOverviewRequest,
     WeeklyOverviewResponse,
 )
-from umai.clients.rod_pump_analysis_client import RodPumpAnalysisClient
+from umai.tools.rod_pump_health_tools import RERUN_TOOL_NAME
 from umai.repositories.conversation_repository import (
     ConversationNotFoundError,
     ConversationRepository,
@@ -64,10 +63,6 @@ ChatHandler = Callable[
     [Settings, int, str | None, list[dict[str, str]], str, str],
     tuple[str, list[dict[str, Any]], dict[str, Any]],
 ]
-RodPumpReportHandler = Callable[
-    [Settings, int, str | None, list[int] | None],
-    dict[str, Any],
-]
 WeeklyOverviewHandler = Callable[
     [Settings, int, str, str],
     dict[str, str],
@@ -79,7 +74,6 @@ def create_app(
     chat_handler: ChatHandler = answer_chat,
     conversation_repository: ConversationRepository | None = None,
     daily_usage_repository: DailyUsageRepository | None = None,
-    rod_pump_report_handler: RodPumpReportHandler | None = None,
     weekly_overview_handler: WeeklyOverviewHandler | None = None,
 ) -> FastAPI:
     settings = settings or Settings.from_env()
@@ -89,15 +83,11 @@ def create_app(
     app.state.chat_handler = chat_handler
     app.state.conversation_repository = conversation_repository
     app.state.daily_usage_repository = daily_usage_repository
-    app.state.rod_pump_report_handler = (
-        rod_pump_report_handler or _run_rod_pump_health_report
-    )
     app.state.weekly_overview_handler = (
         weekly_overview_handler or _run_weekly_overview
     )
     app.state.dynograph_slots = BoundedSemaphore(1)
     app.state.chat_slots = BoundedSemaphore(settings.umai_max_concurrent)
-    app.state.rod_pump_report_slots = BoundedSemaphore(1)
     app.state.weekly_overview_slots = BoundedSemaphore(1)
 
     @app.middleware("http")
@@ -288,6 +278,7 @@ def create_app(
                 assistant_message_id=assistant_message_id,
                 data_entry_intent=_data_entry_intent(tool_calls),
                 view_intent=_view_intent(payload.message, tool_calls),
+                health_rerun_intent=_health_rerun_intent(tool_calls),
             )
         except ConversationNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -309,34 +300,6 @@ def create_app(
             raise HTTPException(status_code=503, detail="Chat request failed") from exc
         finally:
             app.state.chat_slots.release()
-
-    @app.post("/rod-pump-health-report")
-    def rod_pump_health_report(payload: RodPumpHealthReportRequest) -> dict[str, Any]:
-        """Run deterministic fleet analysis without creating chat records."""
-        if not app.state.rod_pump_report_slots.acquire(
-            timeout=settings.umai_slot_timeout
-        ):
-            raise HTTPException(
-                status_code=503,
-                detail="A rod-pump health report is already running",
-            )
-        try:
-            return app.state.rod_pump_report_handler(
-                settings,
-                payload.site_id,
-                payload.as_of_time.isoformat() if payload.as_of_time else None,
-                payload.well_ids,
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        except Exception as exc:
-            logger.exception("Rod-pump health report failed")
-            raise HTTPException(
-                status_code=503,
-                detail="Rod-pump health report failed",
-            ) from exc
-        finally:
-            app.state.rod_pump_report_slots.release()
 
     @app.post("/weekly-overview", response_model=WeeklyOverviewResponse)
     def weekly_overview(payload: WeeklyOverviewRequest) -> WeeklyOverviewResponse:
@@ -370,20 +333,6 @@ def create_app(
     return app
 
 
-def _run_rod_pump_health_report(
-    settings: Settings,
-    site_id: int,
-    as_of_time: str | None,
-    well_ids: list[int] | None,
-) -> dict[str, Any]:
-    """Construct the deterministic client outside the chat/conversation path."""
-    return RodPumpAnalysisClient.from_settings(settings).rank_wells(
-        site_id,
-        as_of_time,
-        well_ids=well_ids,
-    )
-
-
 def _run_weekly_overview(
     settings: Settings,
     site_id: int,
@@ -415,7 +364,7 @@ def _assistant_info(
     stats: dict[str, Any],
     response_mode: str,
 ) -> dict[str, Any]:
-    return {
+    info = {
         "response_mode": response_mode,
         "tool_calls": [
             {
@@ -429,6 +378,11 @@ def _assistant_info(
         "rag_documents": extract_rag_sources(tool_calls),
         "sql_queries": _sql_query_audit(tool_calls),
     }
+    # UMetriqs reads this back to confirm a rerun was requested by this message.
+    health_rerun_intent = _health_rerun_intent(tool_calls)
+    if health_rerun_intent is not None:
+        info["health_rerun_intent"] = health_rerun_intent
+    return info
 
 
 def _data_entry_intent(tool_calls: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -443,6 +397,22 @@ def _data_entry_intent(tool_calls: list[dict[str, Any]]) -> dict[str, Any] | Non
             return None
         if result.get("status") == "ready":
             return result
+    return None
+
+
+def _health_rerun_intent(tool_calls: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Forward the well of an accepted rerun request; UMetriqs runs it as the user."""
+    for call in reversed(tool_calls):
+        if call.get("tool") != RERUN_TOOL_NAME:
+            continue
+        try:
+            result = json.loads(str(call.get("result", "")))
+        except (TypeError, ValueError):
+            return None
+        well = result.get("well") if isinstance(result, dict) else None
+        if result.get("status") == "rerun_requested" and isinstance(well, dict):
+            return {"well_id": int(well["id"]), "well_name": str(well["name"])}
+        return None
     return None
 
 

@@ -28,6 +28,12 @@ def test_accepts_bare_numeric_well_status_question():
     assert is_in_domain("What is the status of 4048 offline?") is True
 
 
+def test_accepts_health_shorthand_for_numbered_well():
+    assert is_in_domain("rerun health for 3051") is True
+    assert is_in_domain("health of 5823?") is True
+    assert is_in_domain("How is my health?") is False
+
+
 def test_accepts_operational_lookup_for_numbered_entity():
     assert is_in_domain("What can you tell me about 4293?") is True
     assert is_in_domain("Tell me about HDU_4293") is True

@@ -271,11 +271,6 @@ Configure UMreports:
 ```bash
 UMREPORTS_API_URL=http://127.0.0.1:50008/report/
 MONITORING_DATA_API_URL=http://metrics1.ultimatesys.com/render
-ROD_PUMP_TIMEOUT_SECONDS=20
-ROD_PUMP_MAX_DATA_POINTS=96
-ROD_PUMP_BATCH_WORKERS=2
-# Leave unset until a paraffin model passes the validation gate.
-ROD_PUMP_MODEL_METADATA=
 UMREPORTS_TIMEOUT_SECONDS=30
 MAX_REPORT_DAYS=366
 ```

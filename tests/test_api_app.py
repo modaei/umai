@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy import create_engine, text
 
 from umai.api.app import create_app, is_allowed_client_host
-from umai.api.schemas import ChatRequest, RodPumpHealthReportRequest, WeeklyOverviewRequest
+from umai.api.schemas import ChatRequest, WeeklyOverviewRequest
 from umai.config.settings import Settings
 from umai.repositories.conversation_repository import ConversationRepository
 from umai.services.domain_guard import MAX_CHAT_REQUEST_CHARACTERS, OUT_OF_DOMAIN_RESPONSE
@@ -809,35 +809,8 @@ def test_app_registers_chat_and_health_routes():
 
     assert route_endpoint(app, "/chat", "POST")
     assert route_endpoint(app, "/health", "GET")
-    assert route_endpoint(app, "/rod-pump-health-report", "POST")
+    assert not any(getattr(route, "path", None) == "/rod-pump-health-report" for route in app.routes)
     assert route_endpoint(app, "/weekly-overview", "POST")
-
-
-def test_rod_pump_report_endpoint_bypasses_conversation_storage():
-    repository = make_conversation_repository()
-    calls = []
-
-    def report_handler(settings, site_id, as_of_time, well_ids):
-        calls.append((site_id, as_of_time, well_ids))
-        return {"site_id": site_id, "wells": []}
-
-    app = create_app(
-        settings=make_settings(),
-        chat_handler=failing_chat_handler,
-        conversation_repository=repository,
-        rod_pump_report_handler=report_handler,
-    )
-    endpoint = route_endpoint(app, "/rod-pump-health-report", "POST")
-    result = endpoint(RodPumpHealthReportRequest.model_validate({
-        "site_id": 4,
-        "well_ids": [10, 10, 11],
-        "as_of_time": "2026-07-06T08:00:00Z",
-    }))
-
-    assert result == {"site_id": 4, "wells": []}
-    assert calls == [(4, "2026-07-06T08:00:00+00:00", [10, 11])]
-    with repository.engine.connect() as connection:
-        assert connection.execute(text("SELECT COUNT(*) FROM ai_conversations")).scalar_one() == 0
 
 
 def test_weekly_overview_endpoint_bypasses_conversation_storage():
@@ -921,3 +894,50 @@ def test_classifier_training_endpoint_returns_the_latest_run_and_live_model(tmp_
     assert result["report"] is None
     assert result["latest_candidate"] is None
     assert result["live"]["source"] == "none"
+
+
+def test_chat_forwards_and_stores_accepted_health_rerun_intent():
+    repository = make_conversation_repository()
+    well = {"id": 295, "name": "HARTZOG DRAW UNIT 3051", "key": "HDU_3051"}
+
+    def rerun_handler(settings, site_id, site_name, history, question, response_mode):
+        return "A new health check for HARTZOG DRAW UNIT 3051 has started.", [
+            {
+                "tool": "request_rod_pump_health_rerun",
+                "arguments": {"well_name": "3051"},
+                "result": json.dumps({"ok": True, "status": "rerun_requested", "well": well}),
+            },
+        ], {"total_seconds": 0.1, "model_seconds": 0.1, "tool_seconds": 0.0, "model_calls": 1, "tool_calls": []}
+
+    app = create_app(settings=make_settings(), chat_handler=rerun_handler, conversation_repository=repository)
+    body = route_endpoint(app, "/chat", "POST")(
+        ChatRequest.model_validate({"message": "rerun health for 3051", "user_id": 9, "site_id": 4})
+    ).model_dump()
+
+    intent = {"well_id": 295, "well_name": "HARTZOG DRAW UNIT 3051"}
+    assert body["health_rerun_intent"] == intent
+    conversation = repository.get(body["conversation_id"], user_id=9, site_id=4)
+    info = json.loads(stored_messages(repository, conversation.id)[1]["info"])
+    assert info["health_rerun_intent"] == intent
+
+
+def test_chat_does_not_forward_refused_health_rerun():
+    repository = make_conversation_repository()
+
+    def refused_handler(settings, site_id, site_name, history, question, response_mode):
+        return "A health check is already running.", [
+            {
+                "tool": "request_rod_pump_health_rerun",
+                "arguments": {"well_name": "3051"},
+                "result": json.dumps({"ok": False, "error": "A health check is already running."}),
+            },
+        ], {"total_seconds": 0.1, "model_seconds": 0.1, "tool_seconds": 0.0, "model_calls": 1, "tool_calls": []}
+
+    app = create_app(settings=make_settings(), chat_handler=refused_handler, conversation_repository=repository)
+    body = route_endpoint(app, "/chat", "POST")(
+        ChatRequest.model_validate({"message": "rerun health for 3051", "user_id": 9, "site_id": 4})
+    ).model_dump()
+
+    assert body["health_rerun_intent"] is None
+    conversation = repository.get(body["conversation_id"], user_id=9, site_id=4)
+    assert "health_rerun_intent" not in json.loads(stored_messages(repository, conversation.id)[1]["info"])

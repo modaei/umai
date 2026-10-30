@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
@@ -34,9 +33,9 @@ from umai.clients.data_entry_client import DataEntryClient
 from umai.clients.onrr_client import OnrrClient, UnavailableOnrrClient
 from umai.clients.reading_client import ReadingClient, UnavailableReadingClient
 from umai.clients.report_client import ReportClient
-from umai.clients.rod_pump_analysis_client import (
-    RodPumpAnalysisClient,
-    UnavailableRodPumpAnalysisClient,
+from umai.clients.rod_pump_health_client import (
+    RodPumpHealthClient,
+    UnavailableRodPumpHealthClient,
 )
 from umai.clients.shutdown_client import ShutdownClient, UnavailableShutdownClient
 from umai.clients.site_client import SiteClient
@@ -63,7 +62,7 @@ from umai.tools.onrr_tools import build_onrr_tools
 from umai.tools.operational_context_tools import build_operational_context_tools
 from umai.tools.reading_tools import build_reading_tools
 from umai.tools.report_tools import build_report_tools
-from umai.tools.rod_pump_analysis_tools import build_rod_pump_analysis_tools, is_health_question
+from umai.tools.rod_pump_health_tools import build_rod_pump_health_tools
 from umai.tools.shutdown_tools import build_shutdown_tools
 from umai.tools.well_timeline_tools import build_well_timeline_tools
 from umai.tools.work_order_tools import build_work_order_tools
@@ -71,13 +70,6 @@ from umai.tools.view_navigation_tools import build_view_navigation_tools
 
 
 logger = logging.getLogger(__name__)
-
-ROD_PUMP_FLEET_CHAT_RESPONSE = (
-    "Fleet-wide rod-pump health analysis is delivered through the scheduled "
-    "Rod Pump Health email report. In chat, specify one exact well name, for "
-    "example: ‘Analyze rod-pump health for well 5823.’"
-)
-
 
 def answer_chat(
     settings: Settings,
@@ -91,14 +83,6 @@ def answer_chat(
     settings.validate()
     effective_today = date.fromisoformat(current_date) if current_date else date.today()
     effective_current_date = effective_today.isoformat()
-    if is_rod_pump_fleet_question(question):
-        return ROD_PUMP_FLEET_CHAT_RESPONSE, [], {
-            "total_seconds": 0.0,
-            "model_seconds": 0.0,
-            "tool_seconds": 0.0,
-            "model_calls": 0,
-            "tool_calls": [],
-        }
     resolved_site_name = site_name or _site_name_from_db(settings, site_id)
 
     report_client = ReportClient(
@@ -137,9 +121,9 @@ def answer_chat(
     except ValueError as exc:
         work_order_client = UnavailableWorkOrderClient(str(exc))
     try:
-        rod_pump_analysis_client = RodPumpAnalysisClient.from_settings(settings)
+        rod_pump_health_client = RodPumpHealthClient.from_settings(settings)
     except (ValueError, RuntimeError) as exc:
-        rod_pump_analysis_client = UnavailableRodPumpAnalysisClient(str(exc))
+        rod_pump_health_client = UnavailableRodPumpHealthClient(str(exc))
     try:
         capability_client = CapabilityClient(_knowledge_dir())
     except Exception as exc:
@@ -186,7 +170,7 @@ def answer_chat(
             site_id,
             operational_context_store=operational_context_store,
         ),
-        *build_rod_pump_analysis_tools(rod_pump_analysis_client, site_id),
+        *build_rod_pump_health_tools(rod_pump_health_client, site_id),
         *build_onrr_tools(onrr_client, site_id),
         *build_shutdown_tools(
             shutdown_client,
@@ -299,16 +283,6 @@ def answer_chat(
         [*dependency_traces, *traces],
         combined_stats,
     )
-
-
-def is_rod_pump_fleet_question(question: str) -> bool:
-    """Reject expensive fleet surveillance before model or tool execution."""
-    normalized = " ".join(question.lower().replace("-", " ").split())
-    fleet_language = bool(re.search(
-        r"\b(rank|ranking|all|fleet|which wells?|highest|lowest|urgent|need(?:s)? attention)\b",
-        normalized,
-    ))
-    return fleet_language and is_health_question(question)
 
 
 def _merge_chat_stats(
