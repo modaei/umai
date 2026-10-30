@@ -113,8 +113,9 @@ class WellAllocationListInput(BaseModel):
     sort_by: str | None = Field(
         default=None,
         description=(
-            "Optional row metric to sort by, such as total_allocated_oil, "
-            "daily_avg_allocated_oil, total_allocated_water, total_allocated_gas, "
+            "Optional row metric to sort by, such as total_oil, "
+            "daily_avg_oil, total_water, total_gas, "
+            "total_sold, total_vented, total_flared, total_fuel, "
             "or total_allocated_injection."
         ),
     )
@@ -191,7 +192,15 @@ def _allocation_report_name(allocation_type: str) -> str:
 def _allocation_metric_keys(allocation_type: str) -> tuple[str, ...]:
     if allocation_type == "injection":
         return ("total_allocated_injection",)
-    return ("total_allocated_oil", "total_allocated_water", "total_allocated_gas")
+    return (
+        "total_oil",
+        "total_water",
+        "total_gas",
+        "total_sold",
+        "total_vented",
+        "total_flared",
+        "total_fuel",
+    )
 
 
 def _matches_well_name(row_name: str, requested: str) -> bool:
@@ -339,7 +348,7 @@ def _default_allocation_sort_key(allocation_type: str) -> str:
     return (
         "total_allocated_injection"
         if allocation_type == "injection"
-        else "total_allocated_oil"
+        else "total_oil"
     )
 
 

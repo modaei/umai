@@ -51,23 +51,23 @@ class FakeAllocationReportClient:
             {
                 "name": "HARTZOG DRAW UNIT 1001",
                 "onrr_code": "POW",
-                "total_allocated_oil": 10,
-                "total_allocated_water": 20,
-                "total_allocated_gas": 30,
+                "total_oil": 10,
+                "total_water": 20,
+                "total_gas": 30,
             },
             {
                 "name": "HARTZOG DRAW UNIT 1002",
                 "onrr_code": "TA",
-                "total_allocated_oil": 5,
-                "total_allocated_water": 7,
-                "total_allocated_gas": 11,
+                "total_oil": 5,
+                "total_water": 7,
+                "total_gas": 11,
             },
             {
                 "name": "HARTZOG DRAW UNIT 2001",
                 "onrr_code": "TA",
-                "total_allocated_oil": 99,
-                "total_allocated_water": 98,
-                "total_allocated_gas": 97,
+                "total_oil": 99,
+                "total_water": 98,
+                "total_gas": 97,
             },
         ]
 
@@ -225,9 +225,13 @@ def test_summarize_well_allocation_filters_rod_wells_case_insensitively():
     assert result["ok"] is True
     assert result["matched_well_count"] == 2
     assert result["totals"] == {
-        "total_allocated_oil": 15.0,
-        "total_allocated_water": 27.0,
-        "total_allocated_gas": 41.0,
+        "total_oil": 15.0,
+        "total_water": 27.0,
+        "total_gas": 41.0,
+        "total_sold": 0.0,
+        "total_vented": 0.0,
+        "total_flared": 0.0,
+        "total_fuel": 0.0,
     }
 
 
@@ -261,9 +265,9 @@ def test_summarize_well_allocation_supports_other_pump_types():
     )
 
     assert esp["matched_well_count"] == 1
-    assert esp["totals"]["total_allocated_oil"] == 99.0
+    assert esp["totals"]["total_oil"] == 99.0
     assert jet["matched_well_count"] == 0
-    assert jet["totals"]["total_allocated_oil"] == 0.0
+    assert jet["totals"]["total_oil"] == 0.0
 
 
 def test_summarize_well_allocation_uses_injection_allocation():
@@ -311,7 +315,7 @@ def test_summarize_well_allocation_filters_onrr_code_from_report_rows():
 
     assert well_filter_client.calls == []
     assert result["matched_well_count"] == 2
-    assert result["totals"]["total_allocated_oil"] == 104.0
+    assert result["totals"]["total_oil"] == 104.0
 
 
 def test_summarize_well_allocation_combines_db_and_report_filters():
@@ -338,7 +342,7 @@ def test_summarize_well_allocation_combines_db_and_report_filters():
 
     assert result["matched_well_count"] == 1
     assert result["matched_wells"] == ["HARTZOG DRAW UNIT 1002"]
-    assert result["totals"]["total_allocated_oil"] == 5.0
+    assert result["totals"]["total_oil"] == 5.0
 
 
 def test_list_well_allocation_returns_ranked_per_well_rows():
@@ -355,7 +359,7 @@ def test_list_well_allocation_returns_ranked_per_well_rows():
                 "allocation_type": "production",
                 "start_date": "2026-06-01",
                 "end_date": "2026-06-05",
-                "sort_by": "total_allocated_oil",
+                "sort_by": "total_oil",
                 "limit": 2,
             }
         )
@@ -363,13 +367,13 @@ def test_list_well_allocation_returns_ranked_per_well_rows():
 
     assert result["ok"] is True
     assert result["matched_well_count"] == 3
-    assert result["sort_by"] == "total_allocated_oil"
+    assert result["sort_by"] == "total_oil"
     assert [row["name"] for row in result["rows"]] == [
         "HARTZOG DRAW UNIT 2001",
         "HARTZOG DRAW UNIT 1001",
     ]
-    assert result["rows"][0]["total_allocated_oil"] == 99.0
-    assert result["rows"][0]["daily_avg_allocated_oil"] == 19.8
+    assert result["rows"][0]["total_oil"] == 99.0
+    assert result["rows"][0]["daily_avg_oil"] == 19.8
 
 
 class FakeFlaggedAllocationReportClient:
@@ -378,14 +382,14 @@ class FakeFlaggedAllocationReportClient:
             {
                 "name": "HARTZOG DRAW UNIT 1001",
                 "onrr_code": "POW",
-                "total_allocated_oil": 10,
+                "total_oil": 10,
                 "flags": ["Well test up to 90 days old used (limit 60)"],
                 "row_type": "well",
             },
             {
                 "name": "Unallocated",
                 "onrr_code": None,
-                "total_allocated_oil": 40,
+                "total_oil": 40,
                 "flags": ["Oil production on 1 day(s) had no producing well with a test rate"],
                 "row_type": "unallocated",
             },
@@ -409,7 +413,7 @@ def test_allocation_tools_exclude_unallocated_row_and_surface_flags():
     listing = json.loads(tool_by_name(tools, "list_well_allocation").invoke(args))
 
     assert summary["matched_wells"] == ["HARTZOG DRAW UNIT 1001"]
-    assert summary["totals"]["total_allocated_oil"] == 10.0
+    assert summary["totals"]["total_oil"] == 10.0
     assert summary["report_flags"] == [
         "Oil production on 1 day(s) had no producing well with a test rate"
     ]
@@ -433,7 +437,7 @@ def test_list_well_allocation_applies_well_filters():
                 "start_date": "2026-06-01",
                 "end_date": "2026-06-01",
                 "well_filters": [{"field": "pump_type", "value": "ROD"}],
-                "sort_by": "total_allocated_oil",
+                "sort_by": "total_oil",
             }
         )
     )
