@@ -21,7 +21,7 @@ from umai.prompts.chat_agent import (
     build_sql_failed_message,
     build_sql_success_final_message,
 )
-from umai.tools.rod_pump_analysis_tools import is_health_question
+from umai.tools.rod_pump_health_tools import HEALTH_TOOL_NAMES, is_health_question
 
 
 MAX_TOOL_ROUNDS = 6
@@ -82,7 +82,7 @@ def answer_chat_question(
     started_at = perf_counter()
     effective_today = today or date.today()
     if not is_health_question(question):
-        tools = [tool for tool in tools if tool.name != "analyze_rod_pump"]
+        tools = [tool for tool in tools if tool.name not in HEALTH_TOOL_NAMES]
     tool_map = {tool.name: tool for tool in tools}
     model_with_tools = model.bind_tools(tools, parallel_tool_calls=False)
 

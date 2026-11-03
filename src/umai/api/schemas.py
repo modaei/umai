@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Literal
 from uuid import UUID
-from datetime import date, datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from datetime import date
 from datetime import date as Date
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -20,6 +21,20 @@ class ChatRequest(BaseModel):
     site_id: int = Field(gt=0)
     response_mode: Literal["fast", "intelligent"] = "fast"
     current_date: date | None = None
+    # IANA timezone of the selected site. Production days and "today" follow the site's
+    # clock, which can differ from the server's TIMEZONE setting.
+    timezone: str | None = Field(default=None, max_length=64)
+
+    @field_validator("timezone")
+    @classmethod
+    def timezone_must_be_iana(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError("timezone must be an IANA timezone name") from exc
+        return value
 
     @field_validator("message")
     @classmethod
@@ -41,25 +56,7 @@ class ChatResponse(BaseModel):
     assistant_message_id: int
     data_entry_intent: dict | None = None
     view_intent: dict | None = None
-
-
-class RodPumpHealthReportRequest(BaseModel):
-    """Internal batch request used by the scheduled email report."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    site_id: int = Field(gt=0)
-    well_ids: list[int] | None = None
-    as_of_time: datetime | None = None
-
-    @field_validator("well_ids")
-    @classmethod
-    def validate_well_ids(cls, value: list[int] | None) -> list[int] | None:
-        if value is None:
-            return None
-        if any(well_id <= 0 for well_id in value):
-            raise ValueError("well_ids must contain positive integers")
-        return list(dict.fromkeys(value))
+    health_rerun_intent: dict | None = None
 
 
 class WeeklyOverviewRequest(BaseModel):

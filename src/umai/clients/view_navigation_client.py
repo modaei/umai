@@ -30,21 +30,21 @@ class OperationalView:
 
 
 OPERATIONAL_VIEWS: dict[str, OperationalView] = {
-    "flare_readings": OperationalView("flare_readings r JOIN flares e ON e.id=r.flare_id", "r.time", "e.name", "flare_reading"),
-    "flow_meter_readings": OperationalView("flow_meter_readings r JOIN flow_meters e ON e.id=r.flow_meter_id", "r.time", "e.name", "flow_meter_reading"),
-    "pump_readings": OperationalView("pump_readings r JOIN pumps e ON e.id=r.pump_id", "r.time", "e.name", "pump_reading"),
-    "treater_readings": OperationalView("treater_readings r JOIN treaters e ON e.id=r.treater_id", "r.time", "e.name", "treater_reading"),
-    "knockout_readings": OperationalView("knock_out_readings r JOIN knock_outs e ON e.id=r.knock_out_id", "r.time", "e.name", "knockout_reading"),
-    "water_plant_readings": OperationalView("water_plant_readings r JOIN water_plants e ON e.id=r.water_plant_id", "r.time", "e.name", "water_plant_reading"),
-    "lact_readings": OperationalView("lact_readings r JOIN lacts e ON e.id=r.lact_id", "r.time", "e.name", "lact_reading"),
-    "well_tests": OperationalView("well_tests r JOIN wells e ON e.id=r.well_id", "r.time", "e.name", "well_test"),
-    "well_fluids": OperationalView("well_fluids r JOIN wells e ON e.id=r.well_id", "r.time", "e.name", "well_fluid"),
-    "well_injections": OperationalView("well_injections r JOIN wells e ON e.id=r.well_id", "r.time", "e.name", "well_injection"),
+    "flare_readings": OperationalView("flare_readings r JOIN flares e ON e.id=r.flare_id", "r.date", "e.name", "flare_reading"),
+    "flow_meter_readings": OperationalView("flow_meter_readings r JOIN flow_meters e ON e.id=r.flow_meter_id", "r.date", "e.name", "flow_meter_reading"),
+    "pump_readings": OperationalView("pump_readings r JOIN pumps e ON e.id=r.pump_id", "r.date", "e.name", "pump_reading"),
+    "treater_readings": OperationalView("treater_readings r JOIN treaters e ON e.id=r.treater_id", "r.date", "e.name", "treater_reading"),
+    "knockout_readings": OperationalView("knock_out_readings r JOIN knock_outs e ON e.id=r.knock_out_id", "r.date", "e.name", "knockout_reading"),
+    "water_plant_readings": OperationalView("water_plant_readings r JOIN water_plants e ON e.id=r.water_plant_id", "r.date", "e.name", "water_plant_reading"),
+    "lact_readings": OperationalView("lact_readings r JOIN lacts e ON e.id=r.lact_id", "r.date", "e.name", "lact_reading"),
+    "well_tests": OperationalView("well_tests r JOIN wells e ON e.id=r.well_id", "r.date", "e.name", "well_test"),
+    "well_fluids": OperationalView("well_fluids r JOIN wells e ON e.id=r.well_id", "r.date", "e.name", "well_fluid"),
+    "well_injections": OperationalView("well_injections r JOIN wells e ON e.id=r.well_id", "r.date", "e.name", "well_injection"),
     "shutdowns": OperationalView("well_shutdowns r JOIN wells e ON e.id=r.well_id", "r.`start`", "e.name", "shutdown"),
     "general_notes": OperationalView("general_notes r", "r.date", "r.comments", "general_note"),
-    "work_orders": OperationalView("work_orders r", "r.time", "r.subject", "work_order", default_status="open"),
+    "work_orders": OperationalView("work_orders r", "r.date", "r.subject", "work_order", default_status="open"),
     "run_tickets": OperationalView("run_tickets r JOIN tanks e ON e.id=r.tank_id", "r.time", "e.name", "run_ticket"),
-    "water_draws": OperationalView("water_draws r JOIN tanks e ON e.id=r.tank_id", "r.time", None, "water_draw"),
+    "water_draws": OperationalView("water_draws r JOIN tanks e ON e.id=r.tank_id", "r.date", None, "water_draw"),
 }
 
 
@@ -127,7 +127,7 @@ class ViewNavigationClient:
         params["site_id"] = site_id
         if search_text:
             clauses.append("LOWER(e.name) LIKE LOWER(:search)")
-        clauses.extend(_date_clauses("r.time", params))
+        clauses.extend(_date_clauses("r.date", params))
         where = " AND ".join(clauses)
         unions = []
         for table_name, kind in (

@@ -38,12 +38,12 @@ COMMON_AGGREGATE_HINTS = [
     "Well attributes: use case-insensitive comparisons for text attributes such as wells.pump_type, onrr_codes.name, wells.wogcc_class, wells.wogcc_status, wells.direction, and wells.prod_fm. Rod wells mean pump_type ROD; TA wells mean onrr_code TA.",
     "Well allocation totals: do not use SQL over well_tests for specific well or well-group production/injection contribution when the allocation report tool can answer it.",
     "Shutdown totals/reasons: join well_shutdowns ws to wells w, filter w.site_id = :site_id, use ws.`start`/ws.`end`, compute overlap hours for the requested date range, and group by ws.downtime_code or w.name.",
-    "Well-test aggregates: join well_tests wt to wells w, filter w.site_id = :site_id, use wt.time and aggregate wt.oil, wt.water, wt.gas, or wt.runtime only for explicit well-test questions.",
+    "Well-test aggregates: join well_tests wt to wells w, filter w.site_id = :site_id, use wt.date and aggregate wt.oil, wt.water, wt.gas, or wt.runtime only for explicit well-test questions.",
     "Well-test battery aggregates: left join batteries b on b.id = w.battery_id and group by COALESCE(b.name, 'No Battery').",
     "Mixed-tank oil volume: join mixed_tank_readings m to tanks t, filter t.site_id = :site_id, compute oil height from top level minus water level, multiply by t.bbl_foot.",
     "Mixed-tank recoverable oil: compute top level minus the greater of water level and tanks.unusable_height, clamp at zero, then multiply by tanks.bbl_foot.",
     "Tank volume SQL: oil_volume, water_volume, and total_volume are computed tool-result fields, not database columns. Do not use tank_readings; use mixed_tank_readings with level fields and tanks.bbl_foot for oil.",
-    "Flow meter aggregates: join flow_meter_readings r to flow_meters fm, filter fm.site_id = :site_id, use r.time, r.total, r.flow, r.odometer, and fm.type.",
+    "Flow meter aggregates: join flow_meter_readings r to flow_meters fm, filter fm.site_id = :site_id, use r.date, r.total, r.flow, r.odometer, and fm.type.",
 ]
 
 MIXED_TANK_OIL_VOLUME_SQL = (
@@ -202,7 +202,7 @@ SQL_RELATIONSHIP_GUIDANCE = {
         ],
         "pitfalls": [
             "Use the parent equipment table for site filtering.",
-            "Use reading time columns for date ranges.",
+            "Use the reading date column (`date`) for date ranges; run_tickets use `time`.",
             "There is no unified tank_readings table.",
             "oil_volume, water_volume, and total_volume are computed tool-result fields, not database columns.",
             "For mixed tank oil SQL, calculate oil volume as oil height multiplied by tanks.bbl_foot.",
@@ -211,15 +211,15 @@ SQL_RELATIONSHIP_GUIDANCE = {
         "example_sql": (
             "SELECT ROUND(AVG(d.daily_oil_bbl), 2) AS average_daily_oil_bbl "
             "FROM ("
-            "SELECT DATE(m.time) AS reading_date, "
+            "SELECT m.date AS reading_date, "
             f"SUM({MIXED_TANK_OIL_VOLUME_SQL}) AS daily_oil_bbl "
             "FROM mixed_tank_readings m "
             "JOIN tanks t ON t.id = m.tank_id "
             "WHERE t.site_id = :site_id "
-            "AND m.time >= '2026-06-01' "
-            "AND m.time < '2026-06-21' "
+            "AND m.date >= '2026-06-01' "
+            "AND m.date < '2026-06-21' "
             "AND t.type = 'mixed-water-oil' "
-            "GROUP BY DATE(m.time)"
+            "GROUP BY m.date"
             ") d LIMIT 100"
         ),
     },

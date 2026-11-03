@@ -33,7 +33,7 @@ def make_sqlite_client() -> ReadingClient:
                     temperature REAL,
                     bs_w REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -59,7 +59,7 @@ def make_sqlite_client() -> ReadingClient:
                     pressure REAL,
                     volume REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -91,7 +91,7 @@ def make_sqlite_client() -> ReadingClient:
             text(
                 """
                 INSERT INTO lact_readings
-                    (id, lact_id, reading, temperature, bs_w, comments, time)
+                    (id, lact_id, reading, temperature, bs_w, comments, date)
                 VALUES
                     (10, 1, 123.4, 88.0, 0.1, 'normal', '2026-06-10 08:00:00'),
                     (11, 1, 140.0, 90.0, 0.1, 'next day', '2026-06-11 08:00:00'),
@@ -103,7 +103,7 @@ def make_sqlite_client() -> ReadingClient:
             text(
                 """
                 INSERT INTO flare_readings
-                    (id, flare_id, pressure, volume, comments, time)
+                    (id, flare_id, pressure, volume, comments, date)
                 VALUES
                     (20, 3, 10.0, 100.0, 'other site', '2026-06-10 08:00:00')
                 """
@@ -174,7 +174,7 @@ def make_equipment_relation_client() -> ReadingClient:
                     flow REAL,
                     odometer REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -219,7 +219,7 @@ def make_equipment_relation_client() -> ReadingClient:
                     suction_pressure REAL,
                     discharge_pressure REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -262,7 +262,7 @@ def make_equipment_relation_client() -> ReadingClient:
             text(
                 """
                 INSERT INTO flow_meter_readings
-                    (id, flow_meter_id, total, flow, odometer, comments, time)
+                    (id, flow_meter_id, total, flow, odometer, comments, date)
                 VALUES
                     (10, 1, 150.0, 12.0, NULL, 'gas high', '2026-06-10 08:00:00'),
                     (11, 2, 90.0, 6.0, NULL, 'water low', '2026-06-10 08:00:00'),
@@ -297,7 +297,7 @@ def make_equipment_relation_client() -> ReadingClient:
             text(
                 """
                 INSERT INTO pump_readings
-                    (id, pump_id, suction_pressure, discharge_pressure, comments, time)
+                    (id, pump_id, suction_pressure, discharge_pressure, comments, date)
                 VALUES
                     (40, 30, 30.0, 120.0, 'water pump', '2026-06-10 08:00:00'),
                     (41, 31, 20.0, 80.0, 'chemical pump', '2026-06-10 08:00:00'),
@@ -359,7 +359,7 @@ def make_entity_resolution_client() -> ReadingClient:
                     flow REAL,
                     odometer REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -373,7 +373,7 @@ def make_entity_resolution_client() -> ReadingClient:
                     pressure REAL,
                     volume REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -389,7 +389,7 @@ def make_entity_resolution_client() -> ReadingClient:
                     inches REAL,
                     temperature REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -405,7 +405,7 @@ def make_entity_resolution_client() -> ReadingClient:
                     water_level_feet INTEGER,
                     water_level_inches REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -421,7 +421,7 @@ def make_entity_resolution_client() -> ReadingClient:
                     final_feet INTEGER,
                     final_inches REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -459,7 +459,7 @@ def make_entity_resolution_client() -> ReadingClient:
             text(
                 """
                 INSERT INTO flow_meter_readings
-                    (id, flow_meter_id, total, flow, odometer, comments, time)
+                    (id, flow_meter_id, total, flow, odometer, comments, date)
                 VALUES
                     (10, 1, 0.0, 1.5, 100.0, 'normal', '2026-06-01 07:00:00'),
                     (11, 2, 5.0, 2.0, 200.0, 'normal', '2026-06-01 07:00:00'),
@@ -471,7 +471,7 @@ def make_entity_resolution_client() -> ReadingClient:
             text(
                 """
                 INSERT INTO mixed_tank_readings
-                    (id, tank_id, top_level_feet, top_level_inches, water_level_feet, water_level_inches, comments, time)
+                    (id, tank_id, top_level_feet, top_level_inches, water_level_feet, water_level_inches, comments, date)
                 VALUES (20, 1, 8, 0, 1, 0, 'normal', '2026-06-01 07:00:00')
                 """
             )
@@ -516,7 +516,7 @@ def make_sqlite_client_with_missing_exclusions() -> ReadingClient:
                     temperature REAL,
                     bs_w REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -542,7 +542,7 @@ def make_sqlite_client_with_missing_exclusions() -> ReadingClient:
                     pressure REAL,
                     volume REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -592,7 +592,7 @@ def make_sqlite_client_with_missing_exclusions() -> ReadingClient:
                     pressure REAL,
                     temperature REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -608,7 +608,7 @@ def make_sqlite_client_with_missing_exclusions() -> ReadingClient:
                     water_level_feet INTEGER,
                     water_level_inches REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -624,7 +624,7 @@ def make_sqlite_client_with_missing_exclusions() -> ReadingClient:
                     final_feet INTEGER,
                     final_inches REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -652,7 +652,7 @@ def make_sqlite_client_with_missing_exclusions() -> ReadingClient:
                     suction_pressure REAL,
                     discharge_pressure REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -680,7 +680,7 @@ def make_sqlite_client_with_missing_exclusions() -> ReadingClient:
                     flow REAL,
                     odometer REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -706,7 +706,7 @@ def make_sqlite_client_with_missing_exclusions() -> ReadingClient:
                     inlet REAL,
                     oil_off REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -733,7 +733,7 @@ def make_sqlite_client_with_missing_exclusions() -> ReadingClient:
                     pressure REAL,
                     temperature REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -759,7 +759,7 @@ def make_sqlite_client_with_missing_exclusions() -> ReadingClient:
                     suction_pressure REAL,
                     discharge_pressure REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -898,7 +898,7 @@ def make_mixed_tank_client() -> ReadingClient:
                     water_level_feet INTEGER,
                     water_level_inches REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -923,7 +923,7 @@ def make_mixed_tank_client() -> ReadingClient:
                         water_level_feet,
                         water_level_inches,
                         comments,
-                        time
+                        date
                     )
                 VALUES
                     (10, 1, 8, 0, 1, 2, 'first', '2026-05-09 08:00:00'),
@@ -982,7 +982,7 @@ def make_tank_volume_client() -> ReadingClient:
                     pressure REAL,
                     temperature REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -998,7 +998,7 @@ def make_tank_volume_client() -> ReadingClient:
                     water_level_feet INTEGER,
                     water_level_inches REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -1014,7 +1014,7 @@ def make_tank_volume_client() -> ReadingClient:
                     final_feet INTEGER,
                     final_inches REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -1069,7 +1069,7 @@ def make_tank_volume_client() -> ReadingClient:
             text(
                 """
                 INSERT INTO linear_tank_readings
-                    (id, tank_id, level, feet, inches, temperature, comments, time)
+                    (id, tank_id, level, feet, inches, temperature, comments, date)
                 VALUES
                     (10, 1, 2.5, NULL, NULL, NULL, 'level based', '2026-06-10 08:00:00'),
                     (11, 2, NULL, 3, 6, NULL, 'feet inches based', '2026-06-10 08:00:00')
@@ -1080,7 +1080,7 @@ def make_tank_volume_client() -> ReadingClient:
             text(
                 """
                 INSERT INTO mixed_tank_readings
-                    (id, tank_id, top_level_feet, top_level_inches, water_level_feet, water_level_inches, comments, time)
+                    (id, tank_id, top_level_feet, top_level_inches, water_level_feet, water_level_inches, comments, date)
                 VALUES
                     (20, 3, 4, 6, 1, 6, 'mixed complete', '2026-06-10 08:00:00'),
                     (21, 4, 4, 6, 1, 6, 'missing bbl foot', '2026-06-10 08:00:00')
@@ -1091,7 +1091,7 @@ def make_tank_volume_client() -> ReadingClient:
             text(
                 """
                 INSERT INTO non_linear_tank_readings
-                    (id, tank_id, initial_feet, initial_inches, final_feet, final_inches, comments, time)
+                    (id, tank_id, initial_feet, initial_inches, final_feet, final_inches, comments, date)
                 VALUES
                     (30, 5, 5, 0, 4, 0, 'non-linear unchanged', '2026-06-10 08:00:00')
                 """
@@ -1142,7 +1142,7 @@ def make_well_test_client() -> ReadingClient:
                     csgp REAL,
                     runtime REAL,
                     comments TEXT,
-                    time TEXT NOT NULL
+                    date TEXT NOT NULL
                 )
                 """
             )
@@ -1186,7 +1186,7 @@ def make_well_test_client() -> ReadingClient:
                         csgp,
                         runtime,
                         comments,
-                        time
+                        date
                     )
                 VALUES
                     (10, 1, 25.5, 12.0, 30.0, NULL, NULL, NULL, NULL, NULL, 24.0, 'good', '2026-05-01 08:00:00'),

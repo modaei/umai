@@ -3,12 +3,14 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine, URL
 from sqlalchemy.exc import SQLAlchemyError
 
 from umai.config.settings import Settings
+from umai.site_time import lookup_site_zone, site_to_storage, storage_to_site
 from umai.clients.well_filter_client import (
     WellFilterClientError,
     _add_filter_condition,
@@ -50,9 +52,19 @@ DOWNTIME_CODES = {
 
 
 class ShutdownClient:
-    def __init__(self, engine: Engine, max_rows: int = 500):
+    """Read well shutdowns for a site.
+
+    Shutdown times are moments stored in the storage timezone (TIMEZONE, which must match
+    umetriqs' APP_TIMEZONE). Users think in the site's days, so all day arithmetic here is
+    done on the site's clock: query bounds are converted to storage time and returned
+    start/end values are converted to site time.
+    """
+
+    def __init__(self, engine: Engine, max_rows: int = 500, storage_timezone: str = "UTC"):
         self.engine = engine
         self.max_rows = max_rows
+        self.storage_zone = ZoneInfo(storage_timezone)
+        self._site_zones: dict[int, ZoneInfo] = {}
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "ShutdownClient":
@@ -73,7 +85,7 @@ class ShutdownClient:
             pool_recycle=settings.db_pool_recycle,
             pool_pre_ping=True,
         )
-        return cls(engine)
+        return cls(engine, storage_timezone=settings.timezone)
 
     def list_downtime_codes(self) -> dict[str, Any]:
         return {"downtime_codes": DOWNTIME_CODES}
@@ -109,7 +121,7 @@ class ShutdownClient:
     def get_current_shutdowns(
         self, site_id: int, as_of_date: str | None = None
     ) -> dict[str, Any]:
-        as_of = self._parse_date(as_of_date) if as_of_date else date.today()
+        as_of = self._parse_date(as_of_date) if as_of_date else datetime.now(self._site_zone(site_id)).date()
         start, end = self._day_bounds(as_of)
         query = text(
             """
@@ -133,10 +145,10 @@ class ShutdownClient:
         rows = self._execute(
             query,
             site_id=site_id,
-            start_time=start,
-            end_time=end,
+            start_time=self._to_storage(site_id, start),
+            end_time=self._to_storage(site_id, end),
         )
-        shutdowns = [self._compact_shutdown_row(row) for row in rows]
+        shutdowns = [self._compact_shutdown_row(self._row_to_site(site_id, row)) for row in rows]
         return {
             "site_id": site_id,
             "as_of_date": as_of.isoformat(),
@@ -281,6 +293,8 @@ class ShutdownClient:
             (start_day + timedelta(days=offset)).isoformat()
             for offset in range(day_count)
         ]
+        # Resolve the site's timezone once, before worker threads share the connection pool.
+        self._site_zone(site_id)
         with ThreadPoolExecutor(max_workers=min(4, day_count)) as executor:
             daily_results = list(
                 executor.map(
@@ -438,10 +452,10 @@ class ShutdownClient:
         rows = self._execute(
             query,
             site_id=site_id,
-            start_time=start_time,
-            end_time=end_time,
+            start_time=self._to_storage(site_id, start_time),
+            end_time=self._to_storage(site_id, end_time),
         )
-        return [self._compact_shutdown_row(row) for row in rows]
+        return [self._compact_shutdown_row(self._row_to_site(site_id, row)) for row in rows]
 
     def _wells_with_onrr_state(
         self,
@@ -450,7 +464,8 @@ class ShutdownClient:
         filters: list[dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
         conditions = ["w.site_id = :site_id"]
-        params: dict[str, Any] = {"site_id": site_id, "as_of_time": as_of_time}
+        # as_of_time is on the site's clock; well history change times are stored moments.
+        params: dict[str, Any] = {"site_id": site_id, "as_of_time": self._to_storage(site_id, as_of_time)}
         normalized_filters = filters or []
         for index, filter_item in enumerate(normalized_filters):
             _add_filter_condition(filter_item, index, conditions, params)
@@ -570,6 +585,25 @@ class ShutdownClient:
                 "shutdowns": state["shutdowns"],
             }
         return classified
+
+    def _site_zone(self, site_id: int) -> ZoneInfo:
+        """Return the site's timezone, looked up once per site."""
+        if site_id not in self._site_zones:
+            self._site_zones[site_id] = lookup_site_zone(self.engine, site_id, self.storage_zone)
+        return self._site_zones[site_id]
+
+    def _to_storage(self, site_id: int, site_time: datetime) -> datetime:
+        """Convert a naive site wall-clock time to a naive storage-timezone time."""
+        return site_to_storage(site_time, self._site_zone(site_id), self.storage_zone)
+
+    def _row_to_site(self, site_id: int, row: dict[str, Any]) -> dict[str, Any]:
+        """Return the row with its stored start/end shown on the site's clock."""
+        converted = dict(row)
+        for key in ("start", "end"):
+            site_time = storage_to_site(row.get(key), self._site_zone(site_id), self.storage_zone)
+            if site_time is not None:
+                converted[key] = site_time.isoformat(sep=" ")
+        return converted
 
     def _execute(self, query, **params: Any) -> list[dict[str, Any]]:
         params.setdefault("limit", self.max_rows)

@@ -92,10 +92,18 @@ def test_value_prompt_supports_multiple_facilities_and_optional_point():
 def test_rod_pump_rules_distinguish_telemetry_rankings_from_health_analysis():
     content = build_chat_system_message(site_name='Test', site_id=4, today='2026-10-18').content
 
-    assert 'Fleet-wide rod-pump health-analysis rankings' in content
+    assert 'Health rankings across wells must come from list_rod_pump_health' in content
     assert 'Comparing or ranking telemetry data-point values across rod pumps is supported' in content
     assert 'use get_data_point_values and compare the returned values' in content
     assert 'which rod pump has the highest time drift data point?' in content
+
+
+def test_rod_pump_rules_limit_health_reruns_to_explicit_requests():
+    content = build_chat_system_message(site_name='Test', site_id=4, today='2026-10-18').content
+
+    assert 'Call request_rod_pump_health_rerun only when the current user message itself explicitly asks' in content
+    assert 'never offer, suggest, or mention rerunning a health check unless the user asked for one' in content
+    assert 'Do not describe or predict the new result' in content
 
 
 def test_health_routing_requires_explicit_current_question_keyword():

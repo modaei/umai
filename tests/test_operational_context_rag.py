@@ -460,7 +460,7 @@ def test_operational_text_extractor_indexes_work_orders_by_work_order_time():
                     status TEXT NOT NULL,
                     vendor TEXT,
                     comments TEXT,
-                    time DATETIME NOT NULL,
+                    date DATETIME NOT NULL,
                     created_at DATETIME NOT NULL,
                     updated_at DATETIME
                 )
@@ -472,7 +472,7 @@ def test_operational_text_extractor_indexes_work_orders_by_work_order_time():
                 """
                 INSERT INTO work_orders (
                     id, site_id, subject, status, vendor, comments,
-                    time, created_at, updated_at
+                    date, created_at, updated_at
                 )
                 VALUES (
                     21, 4, 'Replace transfer pump', 'open', 'Pump Vendor',

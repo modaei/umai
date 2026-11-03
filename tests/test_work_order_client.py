@@ -13,7 +13,7 @@ def make_work_order_client() -> WorkOrderClient:
                 CREATE TABLE work_orders (
                     id INTEGER PRIMARY KEY,
                     site_id INTEGER NOT NULL,
-                    time TEXT NOT NULL,
+                    date TEXT NOT NULL,
                     subject TEXT,
                     status TEXT,
                     priority INTEGER,
@@ -32,7 +32,7 @@ def make_work_order_client() -> WorkOrderClient:
                     id INTEGER PRIMARY KEY,
                     work_order_id INTEGER NOT NULL,
                     notes TEXT,
-                    time TEXT,
+                    date TEXT,
                     created_at TEXT,
                     updated_at TEXT
                 )
@@ -43,7 +43,7 @@ def make_work_order_client() -> WorkOrderClient:
             text(
                 """
                 INSERT INTO work_orders
-                    (site_id, time, subject, status, vendor, comments, final_cost, cost_estimate)
+                    (site_id, date, subject, status, vendor, comments, final_cost, cost_estimate)
                 VALUES
                     (4, '2026-05-01 08:00:00', 'Repair pump', 'complete',
                      'Vendor A', 'replace part', 100.25, 125),
@@ -62,7 +62,7 @@ def make_work_order_client() -> WorkOrderClient:
             text(
                 """
                 INSERT INTO work_order_notes
-                    (id, work_order_id, notes, time, created_at, updated_at)
+                    (id, work_order_id, notes, date, created_at, updated_at)
                 VALUES
                     (100, 1, 'Pump was inspected before repair.', '2026-05-01 09:00:00',
                      '2026-05-01 09:00:00', '2026-05-01 09:00:00'),
@@ -175,7 +175,7 @@ def test_summarize_work_order_costs_requires_supported_amount_columns():
                 CREATE TABLE work_orders (
                     id INTEGER PRIMARY KEY,
                     site_id INTEGER NOT NULL,
-                    time TEXT NOT NULL,
+                    date TEXT NOT NULL,
                     subject TEXT
                 )
                 """

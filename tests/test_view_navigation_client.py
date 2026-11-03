@@ -10,7 +10,7 @@ def make_client():
     engine = create_engine("sqlite+pysqlite:///:memory:")
     with engine.begin() as connection:
         connection.execute(text("CREATE TABLE flares (id INTEGER PRIMARY KEY, site_id INTEGER, name TEXT)"))
-        connection.execute(text("CREATE TABLE flare_readings (id INTEGER PRIMARY KEY, flare_id INTEGER, time TEXT)"))
+        connection.execute(text("CREATE TABLE flare_readings (id INTEGER PRIMARY KEY, flare_id INTEGER, date TEXT)"))
         connection.execute(text("INSERT INTO flares VALUES (1, 4, 'test1'), (2, 5, 'test1')"))
     return ViewNavigationClient(engine)
 

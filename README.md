@@ -99,6 +99,11 @@ UMAI AI agent
         grounded final answer returned to Ometrics
 ```
 
+Each `/chat` request names its `site_id` and may send the site's `current_date`
+and IANA `timezone`. Production days run midnight to midnight on the site's
+clock, so "today" is `current_date` when sent, otherwise today in `timezone`,
+otherwise today in the `TIMEZONE` setting.
+
 The public `/chat` response contains only:
 
 ```json
@@ -271,11 +276,6 @@ Configure UMreports:
 ```bash
 UMREPORTS_API_URL=http://127.0.0.1:50008/report/
 MONITORING_DATA_API_URL=http://metrics1.ultimatesys.com/render
-ROD_PUMP_TIMEOUT_SECONDS=20
-ROD_PUMP_MAX_DATA_POINTS=96
-ROD_PUMP_BATCH_WORKERS=2
-# Leave unset until a paraffin model passes the validation gate.
-ROD_PUMP_MODEL_METADATA=
 UMREPORTS_TIMEOUT_SECONDS=30
 MAX_REPORT_DAYS=366
 ```
