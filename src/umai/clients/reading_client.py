@@ -6,12 +6,14 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import bindparam, create_engine, inspect, text
 from sqlalchemy.engine import Engine, URL
 from sqlalchemy.exc import SQLAlchemyError
 
 from umai.config.settings import Settings
+from umai.site_time import lookup_site_zone, site_to_storage, storage_to_site
 
 
 class ReadingClientError(RuntimeError):
@@ -346,9 +348,12 @@ def list_supported_reading_types() -> list[dict[str, Any]]:
 
 
 class ReadingClient:
-    def __init__(self, engine: Engine, max_rows: int = 500):
+    def __init__(self, engine: Engine, max_rows: int = 500, storage_timezone: str = "UTC"):
         self.engine = engine
         self.max_rows = max_rows
+        # Run ticket times are moments in the storage timezone; see _moment_bounds.
+        self.storage_zone = ZoneInfo(storage_timezone)
+        self._site_zones: dict[int, ZoneInfo] = {}
         self._missing_reading_exclusion_cache: dict[int, dict[str, tuple[int, ...]]] = {}
         self._table_columns_cache: dict[str, set[str]] = {}
 
@@ -371,7 +376,7 @@ class ReadingClient:
             pool_recycle=settings.db_pool_recycle,
             pool_pre_ping=True,
         )
-        return cls(engine)
+        return cls(engine, storage_timezone=settings.timezone)
 
     def list_reading_types(self) -> list[dict[str, Any]]:
         return list_supported_reading_types()
@@ -1076,8 +1081,12 @@ class ReadingClient:
             }
 
         definition = self._definition(reading_type)
-        start_time = datetime.combine(start_day, time.min)
-        end_time = datetime.combine(end_day + timedelta(days=1), time.min)
+        start_time, end_time = self._moment_bounds(
+            site_id,
+            definition,
+            datetime.combine(start_day, time.min),
+            datetime.combine(end_day + timedelta(days=1), time.min),
+        )
         conditions = [
             "b.site_id = :site_id",
             f"r.{definition.date_column} >= :start_time",
@@ -1111,7 +1120,7 @@ class ReadingClient:
             LIMIT :limit
             """
         )
-        rows = self._execute(query, **params)
+        rows = self._moments_to_site(site_id, definition, self._execute(query, **params))
         rows = self._with_tank_volumes(reading_type, rows)
         return {
             "reading_type": reading_type,
@@ -1523,7 +1532,7 @@ class ReadingClient:
     def _readings_for_day(
         self, site_id: int, definition: ReadingDefinition, day: date
     ) -> list[dict[str, Any]]:
-        start, end = self._day_bounds(day)
+        start, end = self._moment_bounds(site_id, definition, *self._day_bounds(day))
         field_sql = _reading_select_fields(definition)
         query = text(
             f"""
@@ -1542,7 +1551,9 @@ class ReadingClient:
             LIMIT :limit
             """
         )
-        rows = self._execute(query, site_id=site_id, start_time=start, end_time=end)
+        rows = self._moments_to_site(
+            site_id, definition, self._execute(query, site_id=site_id, start_time=start, end_time=end)
+        )
         return self._with_entity_display(
             definition,
             self._with_tank_volumes(_reading_type_for_definition(definition), rows),
@@ -1555,7 +1566,7 @@ class ReadingClient:
         entity_id: int,
         day: date,
     ) -> list[dict[str, Any]]:
-        start, end = self._day_bounds(day)
+        start, end = self._moment_bounds(site_id, definition, *self._day_bounds(day))
         field_sql = _reading_select_fields(definition)
         query = text(
             f"""
@@ -1575,13 +1586,13 @@ class ReadingClient:
             LIMIT :limit
             """
         )
-        rows = self._execute(
+        rows = self._moments_to_site(site_id, definition, self._execute(
             query,
             site_id=site_id,
             entity_id=entity_id,
             start_time=start,
             end_time=end,
-        )
+        ))
         return self._with_entity_display(
             definition,
             self._with_tank_volumes(_reading_type_for_definition(definition), rows),
@@ -1622,7 +1633,7 @@ class ReadingClient:
     def _entity_has_reading(
         self, site_id: int, definition: ReadingDefinition, entity_id: int, day: date
     ) -> bool:
-        start, end = self._day_bounds(day)
+        start, end = self._moment_bounds(site_id, definition, *self._day_bounds(day))
         query = text(
             f"""
             SELECT 1
@@ -1825,8 +1836,12 @@ class ReadingClient:
         reading_filters: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         definition = self._definition(reading_type)
-        start_time = datetime.combine(start_day, time.min)
-        end_time = datetime.combine(end_day + timedelta(days=1), time.min)
+        start_time, end_time = self._moment_bounds(
+            site_id,
+            definition,
+            datetime.combine(start_day, time.min),
+            datetime.combine(end_day + timedelta(days=1), time.min),
+        )
         conditions = [
             "b.site_id = :site_id",
             f"r.{definition.date_column} >= :start_time",
@@ -2392,6 +2407,39 @@ class ReadingClient:
             return date.fromisoformat(value)
         except ValueError as exc:
             raise ReadingClientError("Dates must use YYYY-MM-DD format.") from exc
+
+    def _site_zone(self, site_id: int) -> ZoneInfo:
+        """Return the site's timezone, looked up once per site."""
+        if site_id not in self._site_zones:
+            self._site_zones[site_id] = lookup_site_zone(self.engine, site_id, self.storage_zone)
+        return self._site_zones[site_id]
+
+    def _moment_bounds(
+        self, site_id: int, definition: ReadingDefinition, start: datetime, end: datetime
+    ) -> tuple[datetime, datetime]:
+        """Convert site-day bounds to storage time for moment columns (run ticket times).
+
+        Other readings store a plain date, which is compared as it is.
+        """
+        if definition.date_column == "date":
+            return start, end
+        zone = self._site_zone(site_id)
+        return tuple(site_to_storage(bound, zone, self.storage_zone) for bound in (start, end))
+
+    def _moments_to_site(
+        self, site_id: int, definition: ReadingDefinition, rows: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Show moment rows' `date` (a stored run ticket time) on the site's clock."""
+        if definition.date_column == "date":
+            return rows
+        zone = self._site_zone(site_id)
+        converted = []
+        for row in rows:
+            site_time = storage_to_site(row.get("date"), zone, self.storage_zone)
+            if site_time is not None:
+                row = {**row, "date": site_time.isoformat(sep=" ")}
+            converted.append(row)
+        return converted
 
     @staticmethod
     def _day_bounds(day: date) -> tuple[datetime, datetime]:

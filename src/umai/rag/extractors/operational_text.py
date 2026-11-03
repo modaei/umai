@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine, URL
@@ -9,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from umai.config.settings import Settings
 from umai.rag.document_models import RagDocument
+from umai.site_time import lookup_site_zone, storage_to_site
 
 
 class OperationalTextExtractorError(RuntimeError):
@@ -23,8 +25,10 @@ class OperationalTextExtractor:
     Ometrics rows into normalized RagDocument objects for the vector index.
     """
 
-    def __init__(self, engine: Engine):
+    def __init__(self, engine: Engine, storage_timezone: str = "UTC"):
         self.engine = engine
+        # Moments (shutdowns, run tickets) are stored in this timezone.
+        self.storage_zone = ZoneInfo(storage_timezone)
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "OperationalTextExtractor":
@@ -47,7 +51,7 @@ class OperationalTextExtractor:
             pool_recycle=settings.db_pool_recycle,
             pool_pre_ping=True,
         )
-        return cls(engine)
+        return cls(engine, storage_timezone=settings.timezone)
 
     def extract(
         self,
@@ -71,7 +75,9 @@ class OperationalTextExtractor:
             if not source.required_tables.issubset(available_tables):
                 # Skip this source for older schemas or optional feature tables.
                 continue
-            documents.extend(source.extract(self.engine, site_id, start_date, end_date))
+            documents.extend(
+                source.extract(self.engine, site_id, start_date, end_date, self._zones(site_id))
+            )
         return documents
 
     def extract_one(
@@ -84,7 +90,11 @@ class OperationalTextExtractor:
         source = source_definition(source_type)
         if not source.required_tables.issubset(available_tables):
             return None
-        return source.extract_one(self.engine, site_id, source_id)
+        return source.extract_one(self.engine, site_id, source_id, self._zones(site_id))
+
+    def _zones(self, site_id: int) -> tuple[ZoneInfo, ZoneInfo]:
+        """Return the storage and site timezones used to show stored moments on the site's clock."""
+        return self.storage_zone, lookup_site_zone(self.engine, site_id, self.storage_zone)
 
 
 class SourceDefinition:
@@ -107,8 +117,11 @@ class SourceDefinition:
         entity_id_field: str | None = None,
         entity_name_field: str | None = None,
         title: str | None = None,
+        moment_fields: tuple[str, ...] = (),
     ):
         self.source_type = source_type
+        # Stored moments, shown on the site's clock and dated by the site's day.
+        self.moment_fields = moment_fields
         self.required_tables = required_tables
         self.query = query
         self.text_fields = text_fields
@@ -125,6 +138,7 @@ class SourceDefinition:
         site_id: int,
         start_date: date | None,
         end_date: date | None,
+        zones: tuple[ZoneInfo, ZoneInfo] | None = None,
     ) -> list[RagDocument]:
         # All user-controlled values are bind params. The SQL text is static and
         # owned by the source definition.
@@ -147,7 +161,7 @@ class SourceDefinition:
 
         documents = []
         for row in rows:
-            document = self._row_to_document(row, site_id)
+            document = self._row_to_document(self._moments_to_site(row, zones), site_id)
             if document is not None:
                 documents.append(document)
         return documents
@@ -157,6 +171,7 @@ class SourceDefinition:
         engine: Engine,
         site_id: int,
         source_id: str,
+        zones: tuple[ZoneInfo, ZoneInfo] | None = None,
     ) -> RagDocument | None:
         query = f"""
             SELECT *
@@ -187,7 +202,21 @@ class SourceDefinition:
 
         if row is None:
             return None
-        return self._row_to_document(row, site_id)
+        return self._row_to_document(self._moments_to_site(row, zones), site_id)
+
+    def _moments_to_site(
+        self, row: Any, zones: tuple[ZoneInfo, ZoneInfo] | None
+    ) -> dict[str, Any]:
+        """Return the row with its stored moment fields on the site's clock."""
+        row = dict(row)
+        if not zones or not self.moment_fields:
+            return row
+        storage_zone, site_zone = zones
+        for field in self.moment_fields:
+            site_time = storage_to_site(row.get(field), site_zone, storage_zone)
+            if site_time is not None:
+                row[field] = site_time
+        return row
 
     def _row_to_document(self, row: dict[str, Any], site_id: int) -> RagDocument | None:
         # Build readable labeled text. Labels make retrieved snippets clearer for
@@ -513,7 +542,7 @@ SOURCE_DEFINITIONS: tuple[SourceDefinition, ...] = (
         required_tables={"well_shutdowns", "wells"},
         query=f"""
             SELECT ws.id, w.site_id, ws.well_id, w.name AS well_name,
-                DATE(ws.`start`) AS event_date,
+                ws.`start` AS event_date,
                 ws.`start` AS start, ws.`end` AS end,
                 ws.downtime_code, ws.comments, ws.updated_at
             FROM well_shutdowns ws
@@ -533,6 +562,7 @@ SOURCE_DEFINITIONS: tuple[SourceDefinition, ...] = (
         entity_id_field="well_id",
         entity_name_field="well_name",
         title="Well shutdown",
+        moment_fields=("event_date", "start", "end"),
     ),
     SourceDefinition(
         source_type="well_test",
@@ -782,6 +812,7 @@ SOURCE_DEFINITIONS: tuple[SourceDefinition, ...] = (
         entity_id_field="entity_id",
         entity_name_field="entity_name",
         title="Run ticket comment",
+        moment_fields=("event_date",),
     ),
     SourceDefinition(
         source_type="water_draw_comment",

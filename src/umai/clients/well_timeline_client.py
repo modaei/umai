@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime, time, timedelta
 from typing import Any, Protocol
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine, URL
@@ -10,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from umai.clients.shutdown_client import DOWNTIME_CODES
 from umai.config.settings import Settings
+from umai.site_time import lookup_site_zone, site_to_storage, storage_to_site
 from umai.rag.vector_store import OperationalContextStoreError
 
 
@@ -42,10 +44,13 @@ class WellTimelineClient:
         engine: Engine,
         max_rows_per_source: int = 100,
         operational_context_store: OperationalContextSearchStore | None = None,
+        storage_timezone: str = "UTC",
     ):
         self.engine = engine
         self.max_rows_per_source = max_rows_per_source
         self.operational_context_store = operational_context_store
+        # Shutdown times are moments stored in this timezone; see _shutdowns.
+        self.storage_zone = ZoneInfo(storage_timezone)
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "WellTimelineClient":
@@ -66,7 +71,7 @@ class WellTimelineClient:
             pool_recycle=settings.db_pool_recycle,
             pool_pre_ping=True,
         )
-        return cls(engine)
+        return cls(engine, storage_timezone=settings.timezone)
 
     def get_well_timeline(
         self,
@@ -88,9 +93,9 @@ class WellTimelineClient:
         events = []
         events.extend(self._well_tests(well["well_id"], start_time, end_time))
         events.extend(self._well_fluids(well["well_id"], start_time, end_time))
-        events.extend(self._shutdowns(well["well_id"], start_day, end_day))
-        events.extend(self._well_history(well["well_id"], start_time, end_time))
-        events.extend(self._chart_notes(well["well_id"], start_time, end_time))
+        events.extend(self._shutdowns(site_id, well["well_id"], start_day, end_day))
+        events.extend(self._well_history(site_id, well["well_id"], start_time, end_time))
+        events.extend(self._chart_notes(site_id, well["well_id"], start_time, end_time))
         events.extend(
             self._general_notes(site_id, well["well_name"], start_day, end_day)
         )
@@ -229,10 +234,14 @@ class WellTimelineClient:
         ]
 
     def _shutdowns(
-        self, well_id: int, start_day: date, end_day: date
+        self, site_id: int, well_id: int, start_day: date, end_day: date
     ) -> list[dict[str, Any]]:
-        start_time = datetime.combine(start_day, time.min)
-        end_time = datetime.combine(end_day, time.min) + timedelta(days=1)
+        """Return shutdown events overlapping the site days, with times on the site's clock."""
+        site_zone = lookup_site_zone(self.engine, site_id, self.storage_zone)
+        start_time = site_to_storage(datetime.combine(start_day, time.min), site_zone, self.storage_zone)
+        end_time = site_to_storage(
+            datetime.combine(end_day, time.min) + timedelta(days=1), site_zone, self.storage_zone
+        )
         query = text(
             """
             SELECT `start` AS start, `end` AS end, downtime_code, comments
@@ -255,17 +264,19 @@ class WellTimelineClient:
             end_time=end_time,
         ):
             code = row.get("downtime_code")
+            start = storage_to_site(row.get("start"), site_zone, self.storage_zone)
+            end = storage_to_site(row.get("end"), site_zone, self.storage_zone)
             details = {
                 "downtime_code": code,
                 "downtime_reason": DOWNTIME_CODES.get(code, code) if code else None,
                 "comments": row.get("comments"),
-                "start": row.get("start"),
-                "end": row.get("end"),
+                "start": start.isoformat(sep=" ") if start else None,
+                "end": end.isoformat(sep=" ") if end else None,
             }
 
             events.append(
                 self._event(
-                    row["start"],
+                    start,
                     "shutdown",
                     "Well shutdown",
                     {k: v for k, v in details.items() if v is not None},
@@ -274,8 +285,10 @@ class WellTimelineClient:
         return events
 
     def _well_history(
-        self, well_id: int, start_time: datetime, end_time: datetime
+        self, site_id: int, well_id: int, start_time: datetime, end_time: datetime
     ) -> list[dict[str, Any]]:
+        """Return well changes within the site-day range, with change times on the site's clock."""
+        site_zone = lookup_site_zone(self.engine, site_id, self.storage_zone)
         query = text(
             """
             SELECT changed_at, property, old_value, new_value, source
@@ -289,7 +302,7 @@ class WellTimelineClient:
         )
         return [
             self._event(
-                row["changed_at"],
+                storage_to_site(row["changed_at"], site_zone, self.storage_zone),
                 "well_history",
                 "Well history",
                 self._non_empty_fields(
@@ -299,15 +312,22 @@ class WellTimelineClient:
             for row in self._execute(
                 query,
                 well_id=well_id,
-                start_time=start_time,
-                end_time=end_time,
+                start_time=site_to_storage(start_time, site_zone, self.storage_zone),
+                end_time=site_to_storage(end_time, site_zone, self.storage_zone),
                 optional=True,
             )
         ]
 
     def _chart_notes(
-        self, well_id: int, start_time: datetime, end_time: datetime
+        self, site_id: int, well_id: int, start_time: datetime, end_time: datetime
     ) -> list[dict[str, Any]]:
+        """Return chart notes within the site-day range, with note times on the site's clock.
+
+        Note times are text in the storage timezone, minute precision.
+        """
+        site_zone = lookup_site_zone(self.engine, site_id, self.storage_zone)
+        start_value = site_to_storage(start_time, site_zone, self.storage_zone).strftime("%Y-%m-%d %H:%M")
+        end_value = site_to_storage(end_time, site_zone, self.storage_zone).strftime("%Y-%m-%d %H:%M")
         query = text(
             """
             SELECT id AS source_id, x_axis_value, chart_name, note
@@ -322,7 +342,7 @@ class WellTimelineClient:
         )
         return [
             self._event(
-                row["x_axis_value"],
+                self._note_time_to_site(row["x_axis_value"], site_zone),
                 "chart_note",
                 "Chart note",
                 self._non_empty_fields(row, ("source_id", "chart_name", "note")),
@@ -330,11 +350,18 @@ class WellTimelineClient:
             for row in self._execute(
                 query,
                 well_id=well_id,
-                start_value=start_time.strftime("%Y-%m-%d %H:%M"),
-                end_value=end_time.strftime("%Y-%m-%d %H:%M"),
+                start_value=start_value,
+                end_value=end_value,
                 optional=True,
             )
         ]
+
+    def _note_time_to_site(self, value: Any, site_zone: ZoneInfo) -> Any:
+        """Show a stored chart-note time on the site's clock; malformed text is kept as it is."""
+        try:
+            return storage_to_site(value, site_zone, self.storage_zone)
+        except ValueError:
+            return value
 
     def _operational_context_events(
         self,
