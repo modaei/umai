@@ -28,6 +28,8 @@ class ReadingDefinition:
     fields: tuple[str, ...]
     base_filter: str = ""
     supports_missing: bool = True
+    # Readings store only a date in `date`; run tickets keep a real time in `time`.
+    date_column: str = "date"
 
 
 @dataclass(frozen=True)
@@ -176,6 +178,7 @@ READING_DEFINITIONS: dict[str, ReadingDefinition] = {
             "comments",
         ),
         supports_missing=False,
+        date_column="time",
     ),
     "water_draw": ReadingDefinition(
         "Water draws",
@@ -465,8 +468,8 @@ class ReadingClient:
             FROM {definition.base_table} b
             LEFT JOIN {definition.table} r
                 ON b.{definition.base_key} = r.{definition.foreign_key}
-                AND r.time >= :start_time
-                AND r.time < :end_time
+                AND r.{definition.date_column} >= :start_time
+                AND r.{definition.date_column} < :end_time
             WHERE r.{definition.foreign_key} IS NULL
                 AND b.site_id = :site_id
                 AND COALESCE(b.disable_reading, 0) = 0
@@ -585,8 +588,8 @@ class ReadingClient:
         end_time = datetime.combine(end_day + timedelta(days=1), time.min)
         conditions = [
             "w.site_id = :site_id",
-            "wt.time >= :start_time",
-            "wt.time < :end_time",
+            "wt.date >= :start_time",
+            "wt.date < :end_time",
         ]
         params: dict[str, Any] = {
             "site_id": site_id,
@@ -619,7 +622,7 @@ class ReadingClient:
         where_sql = "\n                AND ".join(conditions)
         query = text(
             f"""
-            SELECT wt.time,
+            SELECT wt.date,
                 w.name AS entity_name,
                 wt.oil,
                 wt.water,
@@ -635,7 +638,7 @@ class ReadingClient:
             JOIN wells w
                 ON wt.well_id = w.id
             WHERE {where_sql}
-            ORDER BY wt.time, w.name
+            ORDER BY wt.date, w.name
             LIMIT :limit
             """
         )
@@ -702,7 +705,7 @@ class ReadingClient:
         conditions = ["w.site_id = :site_id"]
         params: dict[str, Any] = {"site_id": site_id}
         if start_day is not None and end_day is not None:
-            conditions.extend(["wt.time >= :start_time", "wt.time < :end_time"])
+            conditions.extend(["wt.date >= :start_time", "wt.date < :end_time"])
             params["start_time"] = datetime.combine(start_day, time.min)
             params["end_time"] = datetime.combine(end_day + timedelta(days=1), time.min)
         if well_name:
@@ -740,7 +743,7 @@ class ReadingClient:
             f"""
             SELECT ranked.well_name,
                 ranked.battery_name,
-                ranked.test_time,
+                ranked.test_date,
                 ranked.oil,
                 ranked.water,
                 ranked.gas,
@@ -749,13 +752,13 @@ class ReadingClient:
             FROM (
                 SELECT w.name AS well_name,
                     COALESCE(b.name, 'No Battery') AS battery_name,
-                    wt.time AS test_time,
+                    wt.date AS test_date,
                     wt.oil,
                     wt.water,
                     wt.gas,
                     wt.runtime,
                     ROW_NUMBER() OVER (
-                        PARTITION BY w.id ORDER BY wt.time DESC, wt.id DESC
+                        PARTITION BY w.id ORDER BY wt.date DESC, wt.id DESC
                     ) AS rn
                 FROM well_tests wt
                 JOIN wells w ON w.id = wt.well_id
@@ -805,7 +808,7 @@ class ReadingClient:
                 SELECT ranked.test_id,
                     ranked.well_name,
                     ranked.battery_name,
-                    ranked.test_time,
+                    ranked.test_date,
                     ranked.oil,
                     ranked.water,
                     ranked.gas,
@@ -814,13 +817,13 @@ class ReadingClient:
                     SELECT wt.id AS test_id,
                         w.name AS well_name,
                         COALESCE(b.name, 'No Battery') AS battery_name,
-                        wt.time AS test_time,
+                        wt.date AS test_date,
                         wt.oil,
                         wt.water,
                         wt.gas,
                         wt.runtime,
                         ROW_NUMBER() OVER (
-                            PARTITION BY w.id ORDER BY wt.time DESC, wt.id DESC
+                            PARTITION BY w.id ORDER BY wt.date DESC, wt.id DESC
                         ) AS rn
                     FROM well_tests wt
                     JOIN wells w ON w.id = wt.well_id
@@ -828,7 +831,7 @@ class ReadingClient:
                     WHERE {where_sql}
                 ) ranked
                 WHERE ranked.rn <= :sequence_test_count
-                ORDER BY ranked.well_name, ranked.test_time, ranked.test_id
+                ORDER BY ranked.well_name, ranked.test_date, ranked.test_id
                 LIMIT :fetch_limit
                 """
             )
@@ -843,7 +846,7 @@ class ReadingClient:
                 SELECT wt.id AS test_id,
                     w.name AS well_name,
                     COALESCE(b.name, 'No Battery') AS battery_name,
-                    wt.time AS test_time,
+                    wt.date AS test_date,
                     wt.oil,
                     wt.water,
                     wt.gas,
@@ -852,7 +855,7 @@ class ReadingClient:
                 JOIN wells w ON w.id = wt.well_id
                 LEFT JOIN batteries b ON b.id = w.battery_id
                 WHERE {where_sql}
-                ORDER BY w.name, wt.time, wt.id
+                ORDER BY w.name, wt.date, wt.id
                 LIMIT :fetch_limit
                 """
             )
@@ -892,12 +895,12 @@ class ReadingClient:
         for well_name, tests in sorted(by_well.items()):
             ordered = sorted(
                 tests,
-                key=lambda item: (str(item["test_time"]), int(item["test_id"])),
+                key=lambda item: (str(item["test_date"]), int(item["test_id"])),
             )
             sequence = []
             previous: dict[str, Any] | None = None
             for test in ordered:
-                item: dict[str, Any] = {"date": str(test["test_time"])[:10]}
+                item: dict[str, Any] = {"date": str(test["test_date"])[:10]}
                 for metric in ("oil", "water", "gas", "runtime"):
                     value = test.get(metric)
                     item[metric] = value
@@ -990,8 +993,8 @@ class ReadingClient:
                 "group_name": well_name,
                 "well_name": well_name,
                 "battery_name": latest["battery_name"],
-                "latest_date": str(latest["test_time"])[:10],
-                "previous_date": str(previous["test_time"])[:10],
+                "latest_date": str(latest["test_date"])[:10],
+                "previous_date": str(previous["test_date"])[:10],
             }
             for metric in ("oil", "water", "gas", "runtime"):
                 latest_value = latest.get(metric)
@@ -1077,8 +1080,8 @@ class ReadingClient:
         end_time = datetime.combine(end_day + timedelta(days=1), time.min)
         conditions = [
             "b.site_id = :site_id",
-            "r.time >= :start_time",
-            "r.time < :end_time",
+            f"r.{definition.date_column} >= :start_time",
+            f"r.{definition.date_column} < :end_time",
         ]
         if definition.base_filter:
             conditions.append(definition.base_filter.removeprefix("AND "))
@@ -1097,14 +1100,14 @@ class ReadingClient:
         field_sql = _reading_select_fields(definition)
         query = text(
             f"""
-            SELECT r.time,
+            SELECT r.{definition.date_column} AS date,
                 b.name AS entity_name,
                 {field_sql}
             FROM {definition.table} r
             JOIN {definition.base_table} b
                 ON r.{definition.foreign_key} = b.{definition.base_key}
             WHERE {where_sql}
-            ORDER BY r.time, b.name
+            ORDER BY r.{definition.date_column}, b.name
             LIMIT :limit
             """
         )
@@ -1525,17 +1528,17 @@ class ReadingClient:
         query = text(
             f"""
             SELECT r.id AS reading_id,
-                r.time,
+                r.{definition.date_column} AS date,
                 b.name AS entity_name,
                 {field_sql}
             FROM {definition.table} r
             JOIN {definition.base_table} b
                 ON r.{definition.foreign_key} = b.{definition.base_key}
             WHERE b.site_id = :site_id
-                AND r.time >= :start_time
-                AND r.time < :end_time
+                AND r.{definition.date_column} >= :start_time
+                AND r.{definition.date_column} < :end_time
                 {definition.base_filter}
-            ORDER BY r.time, b.name
+            ORDER BY r.{definition.date_column}, b.name
             LIMIT :limit
             """
         )
@@ -1557,7 +1560,7 @@ class ReadingClient:
         query = text(
             f"""
             SELECT r.id AS reading_id,
-                r.time,
+                r.{definition.date_column} AS date,
                 b.name AS entity_name,
                 {field_sql}
             FROM {definition.table} r
@@ -1565,10 +1568,10 @@ class ReadingClient:
                 ON r.{definition.foreign_key} = b.{definition.base_key}
             WHERE b.site_id = :site_id
                 AND b.{definition.base_key} = :entity_id
-                AND r.time >= :start_time
-                AND r.time < :end_time
+                AND r.{definition.date_column} >= :start_time
+                AND r.{definition.date_column} < :end_time
                 {definition.base_filter}
-            ORDER BY r.time, b.name
+            ORDER BY r.{definition.date_column}, b.name
             LIMIT :limit
             """
         )
@@ -1628,8 +1631,8 @@ class ReadingClient:
                 ON r.{definition.foreign_key} = b.{definition.base_key}
             WHERE b.site_id = :site_id
                 AND b.{definition.base_key} = :entity_id
-                AND r.time >= :start_time
-                AND r.time < :end_time
+                AND r.{definition.date_column} >= :start_time
+                AND r.{definition.date_column} < :end_time
                 {definition.base_filter}
             LIMIT 1
             """
@@ -1726,8 +1729,8 @@ class ReadingClient:
         end_time = datetime.combine(end_day + timedelta(days=1), time.min)
         conditions = [
             "t.site_id = :site_id",
-            "r.time >= :start_time",
-            "r.time < :end_time",
+            f"r.{definition.date_column} >= :start_time",
+            f"r.{definition.date_column} < :end_time",
         ]
         if definition.base_filter:
             conditions.append(
@@ -1777,7 +1780,7 @@ class ReadingClient:
         field_sql = _reading_select_fields(definition, table_alias="r", base_alias="t")
         query = text(
             f"""
-            SELECT r.time,
+            SELECT r.{definition.date_column} AS date,
                 t.id AS tank_id,
                 t.name AS tank_name,
                 t.`key` AS tank_key,
@@ -1794,7 +1797,7 @@ class ReadingClient:
             JOIN tanks t ON r.tank_id = t.id
             LEFT JOIN batteries bat ON bat.id = t.battery_id
             WHERE {" AND ".join(conditions)}
-            ORDER BY r.time, bat.name, t.name
+            ORDER BY r.{definition.date_column}, bat.name, t.name
             LIMIT :limit
             """
         )
@@ -1826,8 +1829,8 @@ class ReadingClient:
         end_time = datetime.combine(end_day + timedelta(days=1), time.min)
         conditions = [
             "b.site_id = :site_id",
-            "r.time >= :start_time",
-            "r.time < :end_time",
+            f"r.{definition.date_column} >= :start_time",
+            f"r.{definition.date_column} < :end_time",
         ]
         if definition.base_filter:
             conditions.append(definition.base_filter.removeprefix("AND "))
@@ -1898,7 +1901,7 @@ class ReadingClient:
         battery_join_sql = _equipment_battery_join_sql(reading_type)
         query = text(
             f"""
-            SELECT r.time,
+            SELECT r.{definition.date_column} AS date,
                 b.{definition.base_key} AS entity_id,
                 b.name AS entity_name
                 {key_sql},
@@ -1912,7 +1915,7 @@ class ReadingClient:
                 ON r.{definition.foreign_key} = b.{definition.base_key}
             {battery_join_sql}
             WHERE {" AND ".join(conditions)}
-            ORDER BY r.time, bat.name, b.name
+            ORDER BY r.{definition.date_column}, bat.name, b.name
             LIMIT :limit
             """
         )
@@ -2078,7 +2081,7 @@ class ReadingClient:
         latest = {}
         for row in rows:
             current = latest.get(row["entity_name"])
-            if current is None or str(row.get("time", "")) > str(current.get("time", "")):
+            if current is None or str(row.get("date", "")) > str(current.get("date", "")):
                 latest[row["entity_name"]] = row
         return latest
 
@@ -2241,7 +2244,7 @@ class ReadingClient:
     ) -> list[dict[str, Any]]:
         return [
             {
-                "date": str(row.get("time", ""))[:10],
+                "date": str(row.get("date", ""))[:10],
                 **ReadingClient._compact_reading_row(definition, row),
             }
             for row in rows
@@ -2940,7 +2943,7 @@ def _compact_tank_reading_row(
     row: dict[str, Any],
 ) -> dict[str, Any]:
     compact = {
-        "date": str(row.get("time", ""))[:10],
+        "date": str(row.get("date", ""))[:10],
         "reading_type": reading_type,
         "tank_id": row.get("tank_id"),
         "tank_name": row.get("tank_name"),
@@ -2973,7 +2976,7 @@ def _compact_equipment_reading_row(
 ) -> dict[str, Any]:
     entity_type = BASE_ENTITY_LABELS.get(definition.base_table, "Entity")
     compact = {
-        "date": str(row.get("time", ""))[:10],
+        "date": str(row.get("date", ""))[:10],
         "reading_type": reading_type,
         "entity_id": row.get("entity_id"),
         "entity_name": row.get("entity_name"),

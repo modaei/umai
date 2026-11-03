@@ -478,10 +478,10 @@ SOURCE_DEFINITIONS: tuple[SourceDefinition, ...] = (
         required_tables={"work_orders"},
         query=f"""
             SELECT id, site_id, subject, status, vendor, comments,
-                time AS event_date, updated_at
+                `date` AS event_date, updated_at
             FROM work_orders
             WHERE site_id = :site_id
-            {DATE_FILTER.format(field="DATE(time)")}
+            {DATE_FILTER.format(field="`date`")}
         """,
         text_fields=("subject", "status", "vendor", "comments"),
         event_date_field="event_date",
@@ -495,11 +495,11 @@ SOURCE_DEFINITIONS: tuple[SourceDefinition, ...] = (
         required_tables={"work_order_notes", "work_orders"},
         query=f"""
             SELECT won.id, wo.site_id, wo.id AS work_order_id, wo.subject,
-                won.notes, won.time AS event_date, won.updated_at
+                won.notes, won.date AS event_date, won.updated_at
             FROM work_order_notes won
             JOIN work_orders wo ON wo.id = won.work_order_id
             WHERE wo.site_id = :site_id
-            {DATE_FILTER.format(field="DATE(won.time)")}
+            {DATE_FILTER.format(field="won.date")}
         """,
         text_fields=("subject", "notes"),
         event_date_field="event_date",
@@ -539,14 +539,14 @@ SOURCE_DEFINITIONS: tuple[SourceDefinition, ...] = (
         required_tables={"well_tests", "wells"},
         query=f"""
             SELECT wt.id, w.site_id, wt.well_id, w.name AS well_name,
-                wt.time AS event_date, wt.oil, wt.water, wt.gas, wt.comments,
+                wt.date AS event_date, wt.oil, wt.water, wt.gas, wt.comments,
                 wt.updated_at
             FROM well_tests wt
             JOIN wells w ON w.id = wt.well_id
             WHERE w.site_id = :site_id
                 AND wt.comments IS NOT NULL
                 AND wt.comments <> ''
-            {DATE_FILTER.format(field="DATE(wt.time)")}
+            {DATE_FILTER.format(field="wt.date")}
         """,
         text_fields=("well_name", "oil", "water", "gas", "comments"),
         event_date_field="event_date",
@@ -560,13 +560,13 @@ SOURCE_DEFINITIONS: tuple[SourceDefinition, ...] = (
         required_tables={"lact_readings", "lacts"},
         query=f"""
             SELECT lr.id, l.site_id, lr.lact_id AS entity_id, l.name AS entity_name,
-                lr.time AS event_date, lr.comments, lr.updated_at
+                lr.date AS event_date, lr.comments, lr.updated_at
             FROM lact_readings lr
             JOIN lacts l ON l.id = lr.lact_id
             WHERE l.site_id = :site_id
                 AND lr.comments IS NOT NULL
                 AND lr.comments <> ''
-            {DATE_FILTER.format(field="DATE(lr.time)")}
+            {DATE_FILTER.format(field="lr.date")}
         """,
         text_fields=("entity_name", "comments"),
         event_date_field="event_date",
@@ -580,13 +580,13 @@ SOURCE_DEFINITIONS: tuple[SourceDefinition, ...] = (
         required_tables={"flare_readings", "flares"},
         query=f"""
             SELECT fr.id, f.site_id, fr.flare_id AS entity_id, f.name AS entity_name,
-                fr.time AS event_date, fr.comments, fr.updated_at
+                fr.date AS event_date, fr.comments, fr.updated_at
             FROM flare_readings fr
             JOIN flares f ON f.id = fr.flare_id
             WHERE f.site_id = :site_id
                 AND fr.comments IS NOT NULL
                 AND fr.comments <> ''
-            {DATE_FILTER.format(field="DATE(fr.time)")}
+            {DATE_FILTER.format(field="fr.date")}
         """,
         text_fields=("entity_name", "comments"),
         event_date_field="event_date",
@@ -600,13 +600,13 @@ SOURCE_DEFINITIONS: tuple[SourceDefinition, ...] = (
         required_tables={"linear_tank_readings", "tanks"},
         query=f"""
             SELECT tr.id, t.site_id, tr.tank_id AS entity_id, t.name AS entity_name,
-                tr.time AS event_date, tr.comments, tr.updated_at
+                tr.date AS event_date, tr.comments, tr.updated_at
             FROM linear_tank_readings tr
             JOIN tanks t ON t.id = tr.tank_id
             WHERE t.site_id = :site_id
                 AND tr.comments IS NOT NULL
                 AND tr.comments <> ''
-            {DATE_FILTER.format(field="DATE(tr.time)")}
+            {DATE_FILTER.format(field="tr.date")}
         """,
         text_fields=("entity_name", "comments"),
         event_date_field="event_date",
@@ -620,14 +620,14 @@ SOURCE_DEFINITIONS: tuple[SourceDefinition, ...] = (
         required_tables={"flow_meter_readings", "flow_meters"},
         query=f"""
             SELECT fmr.id, fm.site_id, fmr.flow_meter_id AS entity_id,
-                fm.name AS entity_name, fmr.time AS event_date,
+                fm.name AS entity_name, fmr.date AS event_date,
                 fmr.comments, fmr.updated_at
             FROM flow_meter_readings fmr
             JOIN flow_meters fm ON fm.id = fmr.flow_meter_id
             WHERE fm.site_id = :site_id
                 AND fmr.comments IS NOT NULL
                 AND fmr.comments <> ''
-            {DATE_FILTER.format(field="DATE(fmr.time)")}
+            {DATE_FILTER.format(field="fmr.date")}
         """,
         text_fields=("entity_name", "comments"),
         event_date_field="event_date",
@@ -641,14 +641,14 @@ SOURCE_DEFINITIONS: tuple[SourceDefinition, ...] = (
         required_tables={"water_plant_readings", "water_plants"},
         query=f"""
             SELECT wpr.id, wp.site_id, wpr.water_plant_id AS entity_id,
-                wp.name AS entity_name, wpr.time AS event_date,
+                wp.name AS entity_name, wpr.date AS event_date,
                 wpr.comments, wpr.updated_at
             FROM water_plant_readings wpr
             JOIN water_plants wp ON wp.id = wpr.water_plant_id
             WHERE wp.site_id = :site_id
                 AND wpr.comments IS NOT NULL
                 AND wpr.comments <> ''
-            {DATE_FILTER.format(field="DATE(wpr.time)")}
+            {DATE_FILTER.format(field="wpr.date")}
         """,
         text_fields=("entity_name", "comments"),
         event_date_field="event_date",
@@ -662,14 +662,14 @@ SOURCE_DEFINITIONS: tuple[SourceDefinition, ...] = (
         required_tables={"treater_readings", "treaters"},
         query=f"""
             SELECT tr.id, t.site_id, tr.treater_id AS entity_id,
-                t.name AS entity_name, tr.time AS event_date,
+                t.name AS entity_name, tr.date AS event_date,
                 tr.comments, tr.updated_at
             FROM treater_readings tr
             JOIN treaters t ON t.id = tr.treater_id
             WHERE t.site_id = :site_id
                 AND tr.comments IS NOT NULL
                 AND tr.comments <> ''
-            {DATE_FILTER.format(field="DATE(tr.time)")}
+            {DATE_FILTER.format(field="tr.date")}
         """,
         text_fields=("entity_name", "comments"),
         event_date_field="event_date",
@@ -683,14 +683,14 @@ SOURCE_DEFINITIONS: tuple[SourceDefinition, ...] = (
         required_tables={"knock_out_readings", "knock_outs"},
         query=f"""
             SELECT kor.id, ko.site_id, kor.knock_out_id AS entity_id,
-                ko.name AS entity_name, kor.time AS event_date,
+                ko.name AS entity_name, kor.date AS event_date,
                 kor.comments, kor.updated_at
             FROM knock_out_readings kor
             JOIN knock_outs ko ON ko.id = kor.knock_out_id
             WHERE ko.site_id = :site_id
                 AND kor.comments IS NOT NULL
                 AND kor.comments <> ''
-            {DATE_FILTER.format(field="DATE(kor.time)")}
+            {DATE_FILTER.format(field="kor.date")}
         """,
         text_fields=("entity_name", "comments"),
         event_date_field="event_date",
@@ -704,14 +704,14 @@ SOURCE_DEFINITIONS: tuple[SourceDefinition, ...] = (
         required_tables={"pump_readings", "pumps"},
         query=f"""
             SELECT pr.id, p.site_id, pr.pump_id AS entity_id,
-                p.name AS entity_name, pr.time AS event_date,
+                p.name AS entity_name, pr.date AS event_date,
                 pr.comments, pr.updated_at
             FROM pump_readings pr
             JOIN pumps p ON p.id = pr.pump_id
             WHERE p.site_id = :site_id
                 AND pr.comments IS NOT NULL
                 AND pr.comments <> ''
-            {DATE_FILTER.format(field="DATE(pr.time)")}
+            {DATE_FILTER.format(field="pr.date")}
         """,
         text_fields=("entity_name", "comments"),
         event_date_field="event_date",
@@ -725,14 +725,14 @@ SOURCE_DEFINITIONS: tuple[SourceDefinition, ...] = (
         required_tables={"well_fluids", "wells"},
         query=f"""
             SELECT wf.id, w.site_id, wf.well_id AS entity_id,
-                w.name AS entity_name, wf.time AS event_date,
+                w.name AS entity_name, wf.date AS event_date,
                 wf.comments, wf.updated_at
             FROM well_fluids wf
             JOIN wells w ON w.id = wf.well_id
             WHERE w.site_id = :site_id
                 AND wf.comments IS NOT NULL
                 AND wf.comments <> ''
-            {DATE_FILTER.format(field="DATE(wf.time)")}
+            {DATE_FILTER.format(field="wf.date")}
         """,
         text_fields=("entity_name", "comments"),
         event_date_field="event_date",
@@ -746,14 +746,14 @@ SOURCE_DEFINITIONS: tuple[SourceDefinition, ...] = (
         required_tables={"well_injections", "wells"},
         query=f"""
             SELECT wi.id, w.site_id, wi.well_id AS entity_id,
-                w.name AS entity_name, wi.time AS event_date,
+                w.name AS entity_name, wi.date AS event_date,
                 wi.comments, wi.updated_at
             FROM well_injections wi
             JOIN wells w ON w.id = wi.well_id
             WHERE w.site_id = :site_id
                 AND wi.comments IS NOT NULL
                 AND wi.comments <> ''
-            {DATE_FILTER.format(field="DATE(wi.time)")}
+            {DATE_FILTER.format(field="wi.date")}
         """,
         text_fields=("entity_name", "comments"),
         event_date_field="event_date",
@@ -788,14 +788,14 @@ SOURCE_DEFINITIONS: tuple[SourceDefinition, ...] = (
         required_tables={"water_draws", "tanks"},
         query=f"""
             SELECT wd.id, t.site_id, wd.tank_id AS entity_id,
-                t.name AS entity_name, wd.time AS event_date,
+                t.name AS entity_name, wd.date AS event_date,
                 wd.comments, wd.updated_at
             FROM water_draws wd
             JOIN tanks t ON t.id = wd.tank_id
             WHERE t.site_id = :site_id
                 AND wd.comments IS NOT NULL
                 AND wd.comments <> ''
-            {DATE_FILTER.format(field="DATE(wd.time)")}
+            {DATE_FILTER.format(field="wd.date")}
         """,
         text_fields=("entity_name", "comments"),
         event_date_field="event_date",
@@ -809,14 +809,14 @@ SOURCE_DEFINITIONS: tuple[SourceDefinition, ...] = (
         required_tables={"mixed_tank_readings", "tanks"},
         query=f"""
             SELECT mtr.id, t.site_id, mtr.tank_id AS entity_id,
-                t.name AS entity_name, mtr.time AS event_date,
+                t.name AS entity_name, mtr.date AS event_date,
                 mtr.comments, mtr.updated_at
             FROM mixed_tank_readings mtr
             JOIN tanks t ON t.id = mtr.tank_id
             WHERE t.site_id = :site_id
                 AND mtr.comments IS NOT NULL
                 AND mtr.comments <> ''
-            {DATE_FILTER.format(field="DATE(mtr.time)")}
+            {DATE_FILTER.format(field="mtr.date")}
         """,
         text_fields=("entity_name", "comments"),
         event_date_field="event_date",
@@ -830,14 +830,14 @@ SOURCE_DEFINITIONS: tuple[SourceDefinition, ...] = (
         required_tables={"non_linear_tank_readings", "tanks"},
         query=f"""
             SELECT nltr.id, t.site_id, nltr.tank_id AS entity_id,
-                t.name AS entity_name, nltr.time AS event_date,
+                t.name AS entity_name, nltr.date AS event_date,
                 nltr.comments, nltr.updated_at
             FROM non_linear_tank_readings nltr
             JOIN tanks t ON t.id = nltr.tank_id
             WHERE t.site_id = :site_id
                 AND nltr.comments IS NOT NULL
                 AND nltr.comments <> ''
-            {DATE_FILTER.format(field="DATE(nltr.time)")}
+            {DATE_FILTER.format(field="nltr.date")}
         """,
         text_fields=("entity_name", "comments"),
         event_date_field="event_date",

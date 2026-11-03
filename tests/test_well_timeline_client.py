@@ -57,7 +57,7 @@ def make_timeline_client(
                 CREATE TABLE well_tests (
                     id INTEGER PRIMARY KEY,
                     well_id INTEGER NOT NULL,
-                    time TEXT NOT NULL,
+                    date TEXT NOT NULL,
                     oil REAL,
                     water REAL,
                     gas REAL,
@@ -78,7 +78,7 @@ def make_timeline_client(
                 CREATE TABLE well_fluids (
                     id INTEGER PRIMARY KEY,
                     well_id INTEGER NOT NULL,
-                    time TEXT NOT NULL,
+                    date TEXT NOT NULL,
                     level REAL,
                     comments TEXT
                 )
@@ -132,7 +132,7 @@ def make_timeline_client(
                 CREATE TABLE work_orders (
                     id INTEGER PRIMARY KEY,
                     site_id INTEGER NOT NULL,
-                    time TEXT NOT NULL,
+                    date TEXT NOT NULL,
                     subject TEXT,
                     status TEXT,
                     priority INTEGER,
@@ -152,7 +152,7 @@ def make_timeline_client(
             text(
                 """
                 INSERT INTO well_tests
-                    (well_id, time, oil, water, gas, runtime, comments)
+                    (well_id, date, oil, water, gas, runtime, comments)
                 VALUES
                     (1, '2026-05-09 08:00:00', 10, 2, 50, 24, 'good test')
                 """
@@ -161,7 +161,7 @@ def make_timeline_client(
         connection.execute(
             text(
                 """
-                INSERT INTO well_fluids (well_id, time, level, comments)
+                INSERT INTO well_fluids (well_id, date, level, comments)
                 VALUES (1, '2026-05-09 09:00:00', 1234, 'fluid shot')
                 """
             )
@@ -207,7 +207,7 @@ def make_timeline_client(
             text(
                 """
                 INSERT INTO work_orders
-                    (site_id, time, subject, status, priority, vendor, comments)
+                    (site_id, date, subject, status, priority, vendor, comments)
                 VALUES
                     (1, '2026-05-10 12:00:00', 'Repair 11-1-1 Oil', 'open', 3, 'Vendor A', 'replace part')
                 """

@@ -161,18 +161,18 @@ class WellTimelineClient:
     ) -> list[dict[str, Any]]:
         query = text(
             """
-            SELECT time, oil, water, gas, pip, m_temp, amps, tbgp, csgp, runtime, comments
+            SELECT `date`, oil, water, gas, pip, m_temp, amps, tbgp, csgp, runtime, comments
             FROM well_tests
             WHERE well_id = :well_id
-                AND time >= :start_time
-                AND time < :end_time
-            ORDER BY time
+                AND `date` >= :start_time
+                AND `date` < :end_time
+            ORDER BY `date`
             LIMIT :limit
             """
         )
         return [
             self._event(
-                row["time"],
+                row["date"],
                 "well_test",
                 "Well test",
                 self._non_empty_fields(
@@ -204,18 +204,18 @@ class WellTimelineClient:
     ) -> list[dict[str, Any]]:
         query = text(
             """
-            SELECT time, level, comments
+            SELECT `date`, level, comments
             FROM well_fluids
             WHERE well_id = :well_id
-                AND time >= :start_time
-                AND time < :end_time
-            ORDER BY time
+                AND `date` >= :start_time
+                AND `date` < :end_time
+            ORDER BY `date`
             LIMIT :limit
             """
         )
         return [
             self._event(
-                row["time"],
+                row["date"],
                 "well_fluid",
                 "Fluid level",
                 self._non_empty_fields(row, ("level", "comments")),
@@ -435,23 +435,23 @@ class WellTimelineClient:
     ) -> list[dict[str, Any]]:
         query = text(
             """
-            SELECT work_orders.time, work_orders.subject, work_orders.status,
+            SELECT work_orders.date, work_orders.subject, work_orders.status,
                 work_orders.priority, work_orders.vendor, work_orders.comments
             FROM work_orders
             WHERE work_orders.site_id = :site_id
-                AND work_orders.time >= :start_time
-                AND work_orders.time < :end_time
+                AND work_orders.date >= :start_time
+                AND work_orders.date < :end_time
                 AND (
                     work_orders.subject LIKE :well_name
                     OR work_orders.comments LIKE :well_name
                 )
-            ORDER BY work_orders.time
+            ORDER BY work_orders.date
             LIMIT :limit
             """
         )
         return [
             self._event(
-                row["time"],
+                row["date"],
                 "work_order",
                 "Work order",
                 self._non_empty_fields(

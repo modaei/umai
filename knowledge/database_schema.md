@@ -169,7 +169,7 @@ Common flow meter columns:
 - `flow_meters.name`
 - `flow_meters.type`
 - `flow_meters.battery_id`
-- `flow_meter_readings.time`
+- `flow_meter_readings.date`
 - `flow_meter_readings.total`
 - `flow_meter_readings.flow`
 - `flow_meter_readings.odometer`
@@ -349,7 +349,7 @@ LIMIT 10
 
 ### Well Tests
 
-Use `well_tests.time` for date filtering and `well_tests.oil`, `water`, `gas`,
+Use `well_tests.date` for date filtering and `well_tests.oil`, `water`, `gas`,
 and `runtime` for numeric aggregates. Use `wells.name` as the well display
 name. Join through `wells` for site scoping, then optionally left join
 `batteries` through `wells.battery_id`.
@@ -375,8 +375,8 @@ FROM well_tests wt
 JOIN wells w ON w.id = wt.well_id
 LEFT JOIN batteries b ON b.id = w.battery_id
 WHERE w.site_id = :site_id
-  AND wt.time >= '2026-01-01'
-  AND wt.time < '2027-01-01'
+  AND wt.date >= '2026-01-01'
+  AND wt.date < '2027-01-01'
 GROUP BY COALESCE(b.name, 'No Battery')
 ORDER BY avg_oil DESC
 LIMIT 100
@@ -388,7 +388,7 @@ Same-day well tests and shutdowns:
 SELECT DISTINCT w.name AS well_name, ws.date AS event_date
 FROM wells w
 JOIN well_shutdowns ws ON ws.well_id = w.id
-JOIN well_tests wt ON wt.well_id = w.id AND DATE(wt.time) = ws.date
+JOIN well_tests wt ON wt.well_id = w.id AND wt.date = ws.date
 WHERE w.site_id = :site_id
   AND ws.date >= '2026-06-01'
   AND ws.date < '2026-07-01'
@@ -399,7 +399,7 @@ LIMIT 100
 ### Tank Volume Aggregates
 
 For mixed tank oil volume, calculate oil height as top level minus water level
-and multiply by `tanks.bbl_foot`. Use `mixed_tank_readings.time` for dates.
+and multiply by `tanks.bbl_foot`. Use `mixed_tank_readings.date` for dates.
 For recoverable mixed-tank oil, calculate top level minus the greater of water
 level and `tanks.unusable_height`, clamp the height at zero, and multiply by
 `tanks.bbl_foot`.
@@ -414,7 +414,7 @@ such as `mixed_tank_readings`, `linear_tank_readings`, and
 Monthly average mixed-tank oil volume:
 
 ```sql
-SELECT DATE_FORMAT(m.time, '%Y-%m') AS month,
+SELECT DATE_FORMAT(m.date, '%Y-%m') AS month,
        AVG(
          (
            (COALESCE(m.top_level_feet, 0) + COALESCE(m.top_level_inches, 0) / 12.0)
@@ -424,9 +424,9 @@ SELECT DATE_FORMAT(m.time, '%Y-%m') AS month,
 FROM mixed_tank_readings m
 JOIN tanks t ON t.id = m.tank_id
 WHERE t.site_id = :site_id
-  AND m.time >= '2026-01-01'
-  AND m.time < '2027-01-01'
-GROUP BY DATE_FORMAT(m.time, '%Y-%m')
+  AND m.date >= '2026-01-01'
+  AND m.date < '2027-01-01'
+GROUP BY DATE_FORMAT(m.date, '%Y-%m')
 ORDER BY month
 LIMIT 12
 ```
@@ -436,7 +436,7 @@ Average daily mixed-tank oil volume for a date range:
 ```sql
 SELECT ROUND(AVG(d.daily_oil_bbl), 2) AS average_daily_oil_bbl
 FROM (
-  SELECT DATE(m.time) AS reading_date,
+  SELECT m.date AS reading_date,
          SUM(
            (
              (COALESCE(m.top_level_feet, 0) + COALESCE(m.top_level_inches, 0) / 12.0)
@@ -446,10 +446,10 @@ FROM (
   FROM mixed_tank_readings m
   JOIN tanks t ON t.id = m.tank_id
   WHERE t.site_id = :site_id
-    AND m.time >= '2026-06-01'
-    AND m.time < '2026-06-21'
+    AND m.date >= '2026-06-01'
+    AND m.date < '2026-06-21'
     AND t.type = 'mixed-water-oil'
-  GROUP BY DATE(m.time)
+  GROUP BY m.date
 ) d
 LIMIT 100
 ```
@@ -472,7 +472,8 @@ execution, but the current operational conventions are:
 
 - Daily notes often use `date`.
 - Shutdowns use `start` and `end`.
-- Reading and work-order records often use `time`.
+- Reading and work-order records use `date`, a DATE column holding the production
+  day. Run tickets are the exception: `run_tickets.time` is a real date and time.
 - Alarm events often use `happened_on`.
 - Alarm logs commonly use `created_at`; they do not normally have
   `alarm_date`, `alarm_time`, or `happened_on` columns.

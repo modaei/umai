@@ -20,7 +20,8 @@ CostMetric = Literal["cost", "estimate", "all"]
 
 FINAL_COST_COLUMN = "final_cost"
 ESTIMATE_COST_COLUMN = "cost_estimate"
-DATE_COLUMNS = ("time", "created_at", "date")
+# The work order date column, in order of preference; `time` is its name before the rename.
+DATE_COLUMNS = ("date", "time", "created_at")
 TEXT_FILTER_COLUMNS = ("subject", "comments", "vendor", "status")
 
 
