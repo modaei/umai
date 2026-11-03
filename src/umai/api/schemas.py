@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from datetime import date
 from datetime import date as Date
 
@@ -20,6 +21,20 @@ class ChatRequest(BaseModel):
     site_id: int = Field(gt=0)
     response_mode: Literal["fast", "intelligent"] = "fast"
     current_date: date | None = None
+    # IANA timezone of the selected site. Production days and "today" follow the site's
+    # clock, which can differ from the server's TIMEZONE setting.
+    timezone: str | None = Field(default=None, max_length=64)
+
+    @field_validator("timezone")
+    @classmethod
+    def timezone_must_be_iana(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError("timezone must be an IANA timezone name") from exc
+        return value
 
     @field_validator("message")
     @classmethod

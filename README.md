@@ -99,6 +99,11 @@ UMAI AI agent
         grounded final answer returned to Ometrics
 ```
 
+Each `/chat` request names its `site_id` and may send the site's `current_date`
+and IANA `timezone`. Production days run midnight to midnight on the site's
+clock, so "today" is `current_date` when sent, otherwise today in `timezone`,
+otherwise today in the `TIMEZONE` setting.
+
 The public `/chat` response contains only:
 
 ```json

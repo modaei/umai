@@ -941,3 +941,16 @@ def test_chat_does_not_forward_refused_health_rerun():
     assert body["health_rerun_intent"] is None
     conversation = repository.get(body["conversation_id"], user_id=9, site_id=4)
     assert "health_rerun_intent" not in json.loads(stored_messages(repository, conversation.id)[1]["info"])
+
+
+def test_chat_request_accepts_only_iana_timezones():
+    request = ChatRequest.model_validate(
+        {"message": "Oil today?", "user_id": 9, "site_id": 4, "timezone": "Asia/Tokyo"}
+    )
+    assert request.timezone == "Asia/Tokyo"
+    assert ChatRequest.model_validate({"message": "Oil today?", "user_id": 9, "site_id": 4}).timezone is None
+
+    with pytest.raises(ValueError):
+        ChatRequest.model_validate(
+            {"message": "Oil today?", "user_id": 9, "site_id": 4, "timezone": "Mountain Time"}
+        )

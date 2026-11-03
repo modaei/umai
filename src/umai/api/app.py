@@ -261,6 +261,7 @@ def create_app(
                 answer, tool_calls, stats = app.state.chat_handler(
                     *handler_args,
                     current_date=(payload.current_date.isoformat() if payload.current_date else None),
+                    site_timezone=payload.timezone,
                 )
             else:
                 answer, tool_calls, stats = app.state.chat_handler(*handler_args)

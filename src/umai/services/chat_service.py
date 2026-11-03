@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from umai.agents.chat_agent import (
     answer_chat_question,
@@ -71,6 +72,19 @@ from umai.tools.view_navigation_tools import build_view_navigation_tools
 
 logger = logging.getLogger(__name__)
 
+def chat_today(
+    current_date: str | None,
+    site_timezone: str | None,
+    default_timezone: str,
+    now: datetime | None = None,
+) -> date:
+    """Return the chat's "today": current_date, else today on the site's clock."""
+    if current_date:
+        return date.fromisoformat(current_date)
+    zone = ZoneInfo(site_timezone or default_timezone)
+    return (now or datetime.now(zone)).astimezone(zone).date()
+
+
 def answer_chat(
     settings: Settings,
     site_id: int,
@@ -79,9 +93,15 @@ def answer_chat(
     question: str,
     response_mode: str = "fast",
     current_date: str | None = None,
+    site_timezone: str | None = None,
 ) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
+    """Answer a chat question for a site.
+
+    "Today" is the caller's current_date when given; otherwise it is today on the site's
+    clock (site_timezone), falling back to the TIMEZONE setting for older callers.
+    """
     settings.validate()
-    effective_today = date.fromisoformat(current_date) if current_date else date.today()
+    effective_today = chat_today(current_date, site_timezone, settings.timezone)
     effective_current_date = effective_today.isoformat()
     resolved_site_name = site_name or _site_name_from_db(settings, site_id)
 
