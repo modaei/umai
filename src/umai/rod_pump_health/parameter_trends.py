@@ -113,7 +113,6 @@ class ParameterTrendAnalyzer:
     def __init__(self, health_analyzer, monitoring_url, reviewer, http_get=httpx.get, timeout=20):
         self.health_analyzer = health_analyzer
         self.engine = health_analyzer.engine
-        self.timezone = health_analyzer.timezone
         self.monitoring_url = monitoring_url
         self.reviewer = reviewer
         self.http_get = http_get
@@ -144,7 +143,9 @@ class ParameterTrendAnalyzer:
     def analyze(self, well_id, now=None):
         """Analyze the latest thirty days independently of card availability and cached card reviews."""
         well = self.health_analyzer._well(well_id)
-        evaluated_at = (now or datetime.now(self.timezone)).astimezone(self.timezone)
+        # The 30-day window, Graphite's tz and the day counts follow the well's site clock.
+        site_zone = self.health_analyzer.site_zone(well_id)
+        evaluated_at = (now or datetime.now(site_zone)).astimezone(site_zone)
         end = evaluated_at.replace(minute=0, second=0, microsecond=0)
         start = end - timedelta(days=30)
         targets = self._points(well)
@@ -153,7 +154,7 @@ class ParameterTrendAnalyzer:
             params = [("target", target) for target in targets]
             params.extend([
                 ("from", str(int(start.timestamp()))), ("until", str(int(end.timestamp()))),
-                ("format", "json"), ("maxDataPoints", "720"), ("tz", str(self.timezone)),
+                ("format", "json"), ("maxDataPoints", "720"), ("tz", str(site_zone)),
             ])
             response = self.http_get(self.monitoring_url, params=params, timeout=self.timeout)
             response.raise_for_status()
@@ -178,7 +179,7 @@ class ParameterTrendAnalyzer:
             "analyzed_at": evaluated_at.isoformat(),
         }
         if not any(len({
-            datetime.fromtimestamp(point["timestamp"], self.timezone).date()
+            datetime.fromtimestamp(point["timestamp"], site_zone).date()
             for point in samples if point["value"] is not None
         }) >= 2 for samples in parameters.values()):
             return {**metadata, "status": "insufficient_data", "trends": [],

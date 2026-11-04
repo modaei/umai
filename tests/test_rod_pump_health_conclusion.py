@@ -16,7 +16,8 @@ def analyzer():
             "CREATE TABLE rod_pump_health_analyses(well_id INTEGER, findings TEXT, input_cards TEXT)"
         ))
     health = SimpleNamespace(
-        engine=engine, timezone=ZoneInfo("UTC"), _well=lambda _: {"id": 23, "site_id": 4},
+        engine=engine, timezone=ZoneInfo("UTC"), site_zone=lambda _: ZoneInfo("UTC"),
+        _well=lambda _: {"id": 23, "site_id": 4},
     )
     calls = []
 

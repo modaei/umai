@@ -197,7 +197,6 @@ def create_app(
                     DailyUsageRepository(
                         repository.engine,
                         request_limit=settings.umai_daily_user_limit_requests,
-                        timezone_name=settings.timezone,
                         enabled=settings.umai_daily_user_limit_enabled,
                     )
                     if app.state.conversation_repository is not None
@@ -234,7 +233,7 @@ def create_app(
                     assistant_message_id=assistant_message_id,
                 )
 
-            usage_repository.consume(payload.user_id, payload.site_id)
+            usage_repository.consume(payload.user_id, payload.site_id, payload.timezone)
             conversation = conversation or repository.create(
                 payload.user_id,
                 payload.site_id,

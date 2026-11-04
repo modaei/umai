@@ -34,7 +34,6 @@ def make_repository(
     return DailyUsageRepository(
         engine,
         request_limit=request_limit,
-        timezone_name="UTC",
         enabled=enabled,
     )
 
@@ -120,3 +119,47 @@ def test_usage_limit_is_scoped_by_user_and_site():
     assert second_site.used == 1
     assert usage_count(repository, user_id=9, site_id=4) == 1
     assert usage_count(repository, user_id=9, site_id=5) == 1
+
+
+class FrozenDatetime(datetime):
+    """Report 20:00 UTC on July 15 as now; it is already July 16 in Tokyo."""
+
+    @classmethod
+    def now(cls, tz=None):
+        return datetime(2026, 7, 15, 20, 0, tzinfo=timezone.utc).astimezone(tz)
+
+
+def stored_usage_date(repository: DailyUsageRepository, site_id: int) -> str:
+    with repository.engine.connect() as connection:
+        return str(
+            connection.execute(
+                text("SELECT usage_date FROM ai_daily_usage_limits WHERE site_id = :site_id"),
+                {"site_id": site_id},
+            ).scalar_one()
+        )
+
+
+def test_usage_day_and_reset_follow_the_site_clock(monkeypatch):
+    monkeypatch.setattr("umai.repositories.daily_usage_repository.datetime", FrozenDatetime)
+    repository = make_repository()
+
+    tokyo = repository.consume(user_id=9, site_id=4, site_timezone="Asia/Tokyo")
+    denver = repository.consume(user_id=9, site_id=5, site_timezone="America/Denver")
+
+    assert stored_usage_date(repository, 4) == "2026-07-16"
+    assert tokyo.reset_at == datetime(2026, 7, 16, 15, 0, tzinfo=timezone.utc)
+    assert stored_usage_date(repository, 5) == "2026-07-15"
+    assert denver.reset_at == datetime(2026, 7, 16, 6, 0, tzinfo=timezone.utc)
+
+
+def test_site_timezone_is_looked_up_when_not_given(monkeypatch):
+    monkeypatch.setattr("umai.repositories.daily_usage_repository.datetime", FrozenDatetime)
+    repository = make_repository()
+    with repository.engine.begin() as connection:
+        connection.execute(text("CREATE TABLE sites (id INTEGER PRIMARY KEY, timezone TEXT)"))
+        connection.execute(text("INSERT INTO sites (id, timezone) VALUES (4, 'Asia/Tokyo')"))
+
+    result = repository.consume(user_id=9, site_id=4)
+
+    assert stored_usage_date(repository, 4) == "2026-07-16"
+    assert result.reset_at == datetime(2026, 7, 16, 15, 0, tzinfo=timezone.utc)

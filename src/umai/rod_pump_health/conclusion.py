@@ -65,7 +65,6 @@ class ConclusionAnalyzer:
     def __init__(self, health_analyzer, reviewer):
         self.health_analyzer = health_analyzer
         self.engine = health_analyzer.engine
-        self.timezone = health_analyzer.timezone
         self.reviewer = reviewer
 
     def analyze(self, well_id, card_result, parameter_trends):
@@ -92,7 +91,7 @@ class ConclusionAnalyzer:
         }
         metadata = {
             "well_id": well_id, "site_id": well["site_id"],
-            "analyzed_at": datetime.now(self.timezone).isoformat(),
+            "analyzed_at": datetime.now(self.health_analyzer.site_zone(well_id)).isoformat(),
             "input_signature": hashlib.sha256(
                 json.dumps([packet, SYSTEM_PROMPT], sort_keys=True).encode()
             ).hexdigest(),

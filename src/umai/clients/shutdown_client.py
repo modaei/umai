@@ -54,16 +54,14 @@ DOWNTIME_CODES = {
 class ShutdownClient:
     """Read well shutdowns for a site.
 
-    Shutdown times are moments stored in the storage timezone (TIMEZONE, which must match
-    umetriqs' APP_TIMEZONE). Users think in the site's days, so all day arithmetic here is
-    done on the site's clock: query bounds are converted to storage time and returned
-    start/end values are converted to site time.
+    Shutdown times are moments stored in UTC. Users think in the site's days, so all day
+    arithmetic here is done on the site's clock: query bounds are converted to UTC and
+    returned start/end values are converted to site time.
     """
 
-    def __init__(self, engine: Engine, max_rows: int = 500, storage_timezone: str = "UTC"):
+    def __init__(self, engine: Engine, max_rows: int = 500):
         self.engine = engine
         self.max_rows = max_rows
-        self.storage_zone = ZoneInfo(storage_timezone)
         self._site_zones: dict[int, ZoneInfo] = {}
 
     @classmethod
@@ -85,7 +83,7 @@ class ShutdownClient:
             pool_recycle=settings.db_pool_recycle,
             pool_pre_ping=True,
         )
-        return cls(engine, storage_timezone=settings.timezone)
+        return cls(engine)
 
     def list_downtime_codes(self) -> dict[str, Any]:
         return {"downtime_codes": DOWNTIME_CODES}
@@ -589,18 +587,18 @@ class ShutdownClient:
     def _site_zone(self, site_id: int) -> ZoneInfo:
         """Return the site's timezone, looked up once per site."""
         if site_id not in self._site_zones:
-            self._site_zones[site_id] = lookup_site_zone(self.engine, site_id, self.storage_zone)
+            self._site_zones[site_id] = lookup_site_zone(self.engine, site_id)
         return self._site_zones[site_id]
 
     def _to_storage(self, site_id: int, site_time: datetime) -> datetime:
-        """Convert a naive site wall-clock time to a naive storage-timezone time."""
-        return site_to_storage(site_time, self._site_zone(site_id), self.storage_zone)
+        """Convert a naive site wall-clock time to a naive UTC time, as moments are stored."""
+        return site_to_storage(site_time, self._site_zone(site_id))
 
     def _row_to_site(self, site_id: int, row: dict[str, Any]) -> dict[str, Any]:
         """Return the row with its stored start/end shown on the site's clock."""
         converted = dict(row)
         for key in ("start", "end"):
-            site_time = storage_to_site(row.get(key), self._site_zone(site_id), self.storage_zone)
+            site_time = storage_to_site(row.get(key), self._site_zone(site_id))
             if site_time is not None:
                 converted[key] = site_time.isoformat(sep=" ")
         return converted

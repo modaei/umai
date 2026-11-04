@@ -9,6 +9,7 @@ from sqlalchemy.engine import Engine, URL
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from umai.config.settings import Settings
+from umai.site_time import DEFAULT_SITE_TIMEZONE, lookup_site_zone
 
 
 class DailyUsageRepositoryError(RuntimeError):
@@ -37,14 +38,12 @@ class DailyUsageRepository:
         self,
         engine: Engine,
         request_limit: int,
-        timezone_name: str,
         enabled: bool = True,
     ):
         if request_limit <= 0:
             raise ValueError("request_limit must be positive.")
         self.engine = engine
         self.request_limit = request_limit
-        self.timezone_name = timezone_name
         self.enabled = enabled
 
     @classmethod
@@ -69,15 +68,22 @@ class DailyUsageRepository:
         return cls(
             engine,
             request_limit=settings.umai_daily_user_limit_requests,
-            timezone_name=settings.timezone,
             enabled=settings.umai_daily_user_limit_enabled,
         )
 
-    def consume(self, user_id: int, site_id: int) -> DailyUsageResult | None:
+    def consume(
+        self, user_id: int, site_id: int, site_timezone: str | None = None
+    ) -> DailyUsageResult | None:
+        """Count one request against the user's limit for the site's current day.
+
+        The usage day runs midnight to midnight on the site's clock, so the limit resets at
+        the site's midnight. site_timezone is the site's IANA timezone when the caller knows
+        it; otherwise it is looked up from sites.timezone.
+        """
         if not self.enabled:
             return None
 
-        usage_date, now, reset_at = self._current_window()
+        usage_date, now, reset_at = self._current_window(self._site_zone(site_id, site_timezone))
         try:
             with self.engine.begin() as connection:
                 try:
@@ -179,14 +185,19 @@ class DailyUsageRepository:
             reset_at=reset_at,
         )
 
-    def _current_window(self) -> tuple[date, datetime, datetime]:
-        try:
-            tz = ZoneInfo(self.timezone_name)
-        except ZoneInfoNotFoundError as exc:
-            raise DailyUsageRepositoryError(
-                f"Invalid daily usage timezone: {self.timezone_name}"
-            ) from exc
+    def _site_zone(self, site_id: int, site_timezone: str | None) -> ZoneInfo:
+        """Return the given site timezone, or the site's stored one (the default when unknown)."""
+        if site_timezone:
+            try:
+                return ZoneInfo(site_timezone)
+            except (ZoneInfoNotFoundError, ValueError) as exc:
+                raise DailyUsageRepositoryError(
+                    f"Invalid site timezone: {site_timezone}"
+                ) from exc
+        return lookup_site_zone(self.engine, site_id, ZoneInfo(DEFAULT_SITE_TIMEZONE))
 
+    def _current_window(self, tz: ZoneInfo) -> tuple[date, datetime, datetime]:
+        """Return the site's current usage day, now in UTC, and the reset time (next site midnight)."""
         current = datetime.now(tz)
         next_day = datetime.combine(current.date(), time.min, tzinfo=tz) + timedelta(
             days=1

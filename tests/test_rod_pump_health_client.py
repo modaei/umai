@@ -1,14 +1,10 @@
 import json
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import create_engine, text
 
 from umai.clients.rod_pump_health_client import RodPumpHealthClient, RodPumpHealthError
-
-
-DENVER = ZoneInfo("America/Denver")
 
 
 def review(health, **extra):
@@ -78,7 +74,7 @@ def client():
             {"well": 400, "status": "complete", "card": None, "analyzed": None,
              "started": None, "failed": None, "error": None, "findings": json.dumps(review("problem"))},
         ])
-    return RodPumpHealthClient(engine, timezone="America/Denver")
+    return RodPumpHealthClient(engine)
 
 
 def test_well_health_returns_saved_review_without_raw_trends(client):
@@ -90,8 +86,8 @@ def test_well_health_returns_saved_review_without_raw_trends(client):
     assert result["review_source"] == "classifier"
     assert result["findings"][0]["title"] == "Incomplete fillage with fluid pound"
     assert "card_ids" not in result["findings"][0]
-    assert result["analyzed_at"] == "2026-10-30T01:32:03-06:00"
-    assert result["card_captured_at"] == "2026-10-29T19:18:08-06:00"
+    assert result["analyzed_at"] == "2026-10-30T01:32:03+00:00"
+    assert result["card_captured_at"] == "2026-10-29T19:18:08+00:00"
     assert result["parameter_trends"]["interpretation"] == "Pump-off cycling."
     assert "parameters" not in result["parameter_trends"]
     assert "token_usage" not in result["parameter_trends"]
@@ -102,12 +98,13 @@ def test_well_health_returns_saved_review_without_raw_trends(client):
 def test_well_health_reports_last_refresh_failure(client):
     result = client.well_health(4, "HDU_5823")
 
-    assert result["refresh"]["last_failed_at"] == "2026-10-30T02:00:00-06:00"
+    assert result["refresh"]["last_failed_at"] == "2026-10-30T02:00:00+00:00"
     assert result["refresh"]["last_error"] == "Analysis failed."
 
 
 def test_well_health_reports_refresh_in_progress(client):
-    started = datetime.now(DENVER).replace(tzinfo=None) - timedelta(minutes=2)
+    # Stored times are UTC.
+    started = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=2)
     with client.engine.begin() as connection:
         connection.execute(
             text("UPDATE rod_pump_health_analyses SET refresh_started_at=:started WHERE well_id=295"),

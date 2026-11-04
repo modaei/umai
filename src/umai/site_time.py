@@ -1,14 +1,15 @@
 """Site timezones for moments stored by umetriqs.
 
-umetriqs stores DATETIME moments (shutdowns, run tickets) in its storage timezone, which
-UMAI reads as the TIMEZONE setting. Each site has its own IANA timezone in sites.timezone,
-and its production days run midnight to midnight on that clock. Clients do their day
-arithmetic on the site's clock and convert only at the database edge.
+umetriqs stores DATETIME moments (shutdowns, run tickets) in UTC, and MariaDB's
+default-time-zone is UTC, so TIMESTAMP columns read in UTC too. Each site has its own
+IANA timezone in sites.timezone, and its production days run midnight to midnight on
+that clock. Clients do their day arithmetic on the site's clock and convert only at the
+database edge.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
@@ -19,11 +20,11 @@ from sqlalchemy.exc import SQLAlchemyError
 DEFAULT_SITE_TIMEZONE = "America/Denver"
 
 
-def lookup_site_zone(engine: Engine, site_id: int, storage_zone: ZoneInfo) -> ZoneInfo:
+def lookup_site_zone(engine: Engine, site_id: int, fallback=timezone.utc):
     """Return the site's timezone, or the default site timezone when it has none.
 
-    Databases without a sites.timezone column (older schemas, test fixtures) keep the
-    storage timezone, so their times are used unchanged.
+    Databases without a sites.timezone column (older schemas, test fixtures) use the
+    fallback, UTC by default, so stored times are used unchanged.
     """
     try:
         with engine.connect() as connection:
@@ -32,18 +33,18 @@ def lookup_site_zone(engine: Engine, site_id: int, storage_zone: ZoneInfo) -> Zo
             ).scalar()
         return ZoneInfo(name or DEFAULT_SITE_TIMEZONE)
     except SQLAlchemyError:
-        return storage_zone
+        return fallback
 
 
-def site_to_storage(site_time: datetime, site_zone: ZoneInfo, storage_zone: ZoneInfo) -> datetime:
-    """Convert a naive site wall-clock time to a naive storage-timezone time."""
-    return site_time.replace(tzinfo=site_zone).astimezone(storage_zone).replace(tzinfo=None)
+def site_to_storage(site_time: datetime, site_zone) -> datetime:
+    """Convert a naive site wall-clock time to a naive UTC time, as moments are stored."""
+    return site_time.replace(tzinfo=site_zone).astimezone(timezone.utc).replace(tzinfo=None)
 
 
-def storage_to_site(stored, site_zone: ZoneInfo, storage_zone: ZoneInfo) -> datetime | None:
-    """Convert a stored naive moment (datetime or ISO string) to a naive site time."""
+def storage_to_site(stored, site_zone) -> datetime | None:
+    """Convert a stored naive UTC moment (datetime or ISO string) to a naive site time."""
     if stored is None or stored == "":
         return None
     if not isinstance(stored, datetime):
         stored = datetime.fromisoformat(str(stored))
-    return stored.replace(tzinfo=storage_zone).astimezone(site_zone).replace(tzinfo=None)
+    return stored.replace(tzinfo=timezone.utc).astimezone(site_zone).replace(tzinfo=None)

@@ -57,7 +57,6 @@ class Settings:
     umai_conversation_ttl_hours: int
     umai_daily_user_limit_enabled: bool
     umai_daily_user_limit_requests: int
-    timezone: str
     vector_db_host: str
     vector_db_port: int
     vector_db_user: str
@@ -165,7 +164,6 @@ class Settings:
             umai_daily_user_limit_requests=int(
                 os.getenv("UMAI_DAILY_USER_LIMIT_REQUESTS", "150")
             ),
-            timezone=os.getenv("TIMEZONE", "UTC").strip(),
             vector_db_host=os.getenv("VECTOR_DB_HOST", "127.0.0.1").strip(),
             vector_db_port=int(os.getenv("VECTOR_DB_PORT", "5432")),
             vector_db_user=os.getenv("VECTOR_DB_USER", "ometrics").strip(),
@@ -286,8 +284,6 @@ class Settings:
             raise ValueError("UMAI_CONVERSATION_TTL_HOURS must be positive.")
         if self.umai_daily_user_limit_requests <= 0:
             raise ValueError("UMAI_DAILY_USER_LIMIT_REQUESTS must be positive.")
-        if not self.timezone:
-            raise ValueError("TIMEZONE is not configured.")
         if not self.vector_db_host:
             raise ValueError("VECTOR_DB_HOST is not configured.")
         if self.vector_db_port <= 0:
