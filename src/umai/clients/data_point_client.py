@@ -14,6 +14,7 @@ from sqlalchemy.engine import Engine, URL
 from sqlalchemy.exc import SQLAlchemyError
 
 from umai.config.settings import Settings
+from umai.site_time import DEFAULT_SITE_TIMEZONE, lookup_site_zone
 
 
 class DataPointClientError(RuntimeError):
@@ -49,7 +50,9 @@ class DataPointClient:
         self.trend_timeout_seconds = trend_timeout_seconds
         self.trend_max_data_points = trend_max_data_points
         self.http_get = http_get
+        self._site_zones: dict[int, ZoneInfo] = {}
         try:
+            # Fallback zone for sites without one; each site's own zone is used per request.
             self.timezone = ZoneInfo(timezone_name)
         except ZoneInfoNotFoundError as exc:
             raise DataPointClientError(f"Invalid timezone: {timezone_name}") from exc
@@ -75,7 +78,8 @@ class DataPointClient:
         )
         return cls(
             engine,
-            settings.timezone,
+            # Fallback for sites without their own timezone.
+            DEFAULT_SITE_TIMEZONE,
             settings.monitoring_data_api_url,
             settings.data_point_trend_timeout_seconds,
             settings.data_point_trend_max_data_points,
@@ -122,7 +126,9 @@ class DataPointClient:
         # Broad queries include every device unless explicitly filtered.
         legacy_scope = facility_name is not None and data_point_name is not None
         results = [
-            self._current_facility_values(rows, facility, data_point_name, device_name, legacy_scope)
+            self._current_facility_values(
+                rows, facility, data_point_name, device_name, legacy_scope, self._site_zone(site_id)
+            )
             for facility in facilities
         ]
         if legacy_scope:
@@ -149,6 +155,7 @@ class DataPointClient:
         point: str | None,
         device: str | None,
         default_device: bool,
+        site_zone: ZoneInfo,
     ) -> dict[str, Any]:
         selected = [row for row in rows if row["effective_facility_name"] == facility]
         device_defaulted = default_device and device is None
@@ -182,7 +189,7 @@ class DataPointClient:
             matched_rows.extend(row for row in device_rows if _normalize_name(row["data_point_name"]) in names)
         if not matched_rows:
             return {**_not_found("data_point", point or "all data points"), **metadata}
-        values = [self._compact_value(row) for row in matched_rows]
+        values = [self._compact_value(row, site_zone) for row in matched_rows]
         values.sort(key=lambda item: (str(item["device_name"] or ""), item["data_point_name"]))
         return {
             "status": "found", **metadata,
@@ -229,11 +236,11 @@ class DataPointClient:
                 raise DataPointClientError("start_date must be before or equal to end_date.")
             if end_day - start_day > timedelta(days=366):
                 raise DataPointClientError("Trend date ranges are limited to 366 days.")
-            start = datetime.combine(start_day, time.min, tzinfo=self.timezone)
-            end = datetime.combine(end_day, time.max.replace(microsecond=0), tzinfo=self.timezone)
+            start = datetime.combine(start_day, time.min, tzinfo=self._site_zone(site_id))
+            end = datetime.combine(end_day, time.max.replace(microsecond=0), tzinfo=self._site_zone(site_id))
             interval_label = f"{start.strftime('%m/%d/%Y')} to {end.strftime('%m/%d/%Y')}"
         else:
-            end = datetime.now(self.timezone)
+            end = datetime.now(self._site_zone(site_id))
             start = end - timedelta(days=days)
             interval_label = f"last {days} day(s)"
         samples = self._fetch_trend(site_id, resolved["data_point"], start, end)
@@ -492,7 +499,7 @@ class DataPointClient:
                 "format": "json",
                 "noNullPoints": "true",
                 "maxDataPoints": self.trend_max_data_points,
-                "tz": self.timezone.key,
+                "tz": self._site_zone(site_id).key,
             },
             timeout=self.trend_timeout_seconds,
         )
@@ -507,7 +514,9 @@ class DataPointClient:
                 continue
             try:
                 numeric_value = float(value)
-                sample_time = datetime.fromtimestamp(float(timestamp), tz=timezone.utc).astimezone(self.timezone)
+                sample_time = datetime.fromtimestamp(float(timestamp), tz=timezone.utc).astimezone(
+                    self._site_zone(site_id)
+                )
             except (TypeError, ValueError, OSError, OverflowError):
                 continue
             samples.append(
@@ -690,7 +699,7 @@ class DataPointClient:
                     anomalies.append(f"The latest value is a statistical {direction} versus earlier samples.")
         return anomalies
 
-    def _compact_value(self, row: dict[str, Any]) -> dict[str, Any]:
+    def _compact_value(self, row: dict[str, Any], site_zone: ZoneInfo) -> dict[str, Any]:
         payload: dict[str, Any] = {}
         data_error = None
         if row.get("data"):
@@ -710,14 +719,20 @@ class DataPointClient:
             "value": payload.get("value"),
             "value_available": "value" in payload,
             "value_type": payload.get("type") or row.get("data_point_type"),
-            "received_at": self._format_timestamp(timestamp),
+            "received_at": self._format_timestamp(timestamp, site_zone),
             "active": bool(row.get("active")),
         }
         if data_error:
             value["data_error"] = data_error
         return value
 
-    def _format_timestamp(self, value: Any) -> str | None:
+    def _site_zone(self, site_id: int) -> ZoneInfo:
+        """Return the site's timezone, looked up once per site; trends and times use its clock."""
+        if site_id not in self._site_zones:
+            self._site_zones[site_id] = lookup_site_zone(self.engine, site_id, self.timezone)
+        return self._site_zones[site_id]
+
+    def _format_timestamp(self, value: Any, site_zone: ZoneInfo) -> str | None:
         if value is None:
             return None
         try:
@@ -727,7 +742,7 @@ class DataPointClient:
             received = datetime.fromtimestamp(timestamp, tz=timezone.utc)
         except (TypeError, ValueError, OSError, OverflowError):
             return None
-        return received.astimezone(self.timezone).strftime("%m/%d/%Y %H:%M:%S %Z")
+        return received.astimezone(site_zone).strftime("%m/%d/%Y %H:%M:%S %Z")
 
 
 class UnavailableDataPointClient:

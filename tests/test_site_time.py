@@ -1,6 +1,6 @@
 """Stored moments are filtered by the site's days and shown on the site's clock."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import create_engine, text
@@ -44,22 +44,22 @@ def make_engine():
 
 
 def test_helpers_convert_between_site_and_storage_time():
-    assert site_to_storage(datetime(2026, 7, 15), TOKYO, UTC) == datetime(2026, 7, 14, 15)
-    assert storage_to_site("2026-07-14 20:00:00", TOKYO, UTC) == datetime(2026, 7, 15, 5)
-    assert storage_to_site(None, TOKYO, UTC) is None
+    assert site_to_storage(datetime(2026, 7, 15), TOKYO) == datetime(2026, 7, 14, 15)
+    assert storage_to_site("2026-07-14 20:00:00", TOKYO) == datetime(2026, 7, 15, 5)
+    assert storage_to_site(None, TOKYO) is None
 
 
 def test_site_zone_lookup_falls_back():
     engine = make_engine()
-    assert lookup_site_zone(engine, 4, UTC) == TOKYO
-    assert lookup_site_zone(engine, 5, UTC) == ZoneInfo(DEFAULT_SITE_TIMEZONE)
+    assert lookup_site_zone(engine, 4) == TOKYO
+    assert lookup_site_zone(engine, 5) == ZoneInfo(DEFAULT_SITE_TIMEZONE)
     # A schema without sites.timezone keeps stored times unchanged.
     bare = create_engine("sqlite:///:memory:")
-    assert lookup_site_zone(bare, 4, UTC) == UTC
+    assert lookup_site_zone(bare, 4) == timezone.utc
 
 
 def test_shutdowns_use_site_days_and_site_times():
-    client = ShutdownClient(make_engine(), storage_timezone="UTC")
+    client = ShutdownClient(make_engine())
 
     # Only the first shutdown falls on July 15 in Tokyo; the second starts on July 16 there.
     result = client.get_shutdowns(4, "2026-07-15", "2026-07-15")
@@ -72,7 +72,7 @@ def test_shutdowns_use_site_days_and_site_times():
 
 
 def test_rag_shutdowns_are_dated_by_the_site_day():
-    extractor = OperationalTextExtractor(make_engine(), storage_timezone="UTC")
+    extractor = OperationalTextExtractor(make_engine())
 
     documents = extractor.extract(4, source_types={"well_shutdown"})
 
@@ -104,7 +104,7 @@ def test_timeline_history_and_chart_notes_use_the_site_clock():
             "(1, 7, 'RodPumpOilWell', '2026-07-14 20:00', 'Load', 'Paraffin'), "
             "(2, 7, 'RodPumpOilWell', 'not a time', 'Load', 'Odd')"
         ))
-    client = WellTimelineClient(engine, storage_timezone="UTC")
+    client = WellTimelineClient(engine)
     # July 15 in Tokyo, as naive site-clock bounds.
     start, end = datetime(2026, 7, 15), datetime(2026, 7, 16)
 

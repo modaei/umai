@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine, URL
@@ -25,10 +24,8 @@ class OperationalTextExtractor:
     Ometrics rows into normalized RagDocument objects for the vector index.
     """
 
-    def __init__(self, engine: Engine, storage_timezone: str = "UTC"):
+    def __init__(self, engine: Engine):
         self.engine = engine
-        # Moments (shutdowns, run tickets) are stored in this timezone.
-        self.storage_zone = ZoneInfo(storage_timezone)
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "OperationalTextExtractor":
@@ -51,7 +48,7 @@ class OperationalTextExtractor:
             pool_recycle=settings.db_pool_recycle,
             pool_pre_ping=True,
         )
-        return cls(engine, storage_timezone=settings.timezone)
+        return cls(engine)
 
     def extract(
         self,
@@ -76,7 +73,7 @@ class OperationalTextExtractor:
                 # Skip this source for older schemas or optional feature tables.
                 continue
             documents.extend(
-                source.extract(self.engine, site_id, start_date, end_date, self._zones(site_id))
+                source.extract(self.engine, site_id, start_date, end_date, self._site_zone(site_id))
             )
         return documents
 
@@ -90,11 +87,11 @@ class OperationalTextExtractor:
         source = source_definition(source_type)
         if not source.required_tables.issubset(available_tables):
             return None
-        return source.extract_one(self.engine, site_id, source_id, self._zones(site_id))
+        return source.extract_one(self.engine, site_id, source_id, self._site_zone(site_id))
 
-    def _zones(self, site_id: int) -> tuple[ZoneInfo, ZoneInfo]:
-        """Return the storage and site timezones used to show stored moments on the site's clock."""
-        return self.storage_zone, lookup_site_zone(self.engine, site_id, self.storage_zone)
+    def _site_zone(self, site_id: int):
+        """Return the site's timezone, used to show stored (UTC) moments on its clock."""
+        return lookup_site_zone(self.engine, site_id)
 
 
 class SourceDefinition:
@@ -138,7 +135,7 @@ class SourceDefinition:
         site_id: int,
         start_date: date | None,
         end_date: date | None,
-        zones: tuple[ZoneInfo, ZoneInfo] | None = None,
+        site_zone=None,
     ) -> list[RagDocument]:
         # All user-controlled values are bind params. The SQL text is static and
         # owned by the source definition.
@@ -161,7 +158,7 @@ class SourceDefinition:
 
         documents = []
         for row in rows:
-            document = self._row_to_document(self._moments_to_site(row, zones), site_id)
+            document = self._row_to_document(self._moments_to_site(row, site_zone), site_id)
             if document is not None:
                 documents.append(document)
         return documents
@@ -171,7 +168,7 @@ class SourceDefinition:
         engine: Engine,
         site_id: int,
         source_id: str,
-        zones: tuple[ZoneInfo, ZoneInfo] | None = None,
+        site_zone=None,
     ) -> RagDocument | None:
         query = f"""
             SELECT *
@@ -202,18 +199,15 @@ class SourceDefinition:
 
         if row is None:
             return None
-        return self._row_to_document(self._moments_to_site(row, zones), site_id)
+        return self._row_to_document(self._moments_to_site(row, site_zone), site_id)
 
-    def _moments_to_site(
-        self, row: Any, zones: tuple[ZoneInfo, ZoneInfo] | None
-    ) -> dict[str, Any]:
-        """Return the row with its stored moment fields on the site's clock."""
+    def _moments_to_site(self, row: Any, site_zone) -> dict[str, Any]:
+        """Return the row with its stored (UTC) moment fields on the site's clock."""
         row = dict(row)
-        if not zones or not self.moment_fields:
+        if site_zone is None or not self.moment_fields:
             return row
-        storage_zone, site_zone = zones
         for field in self.moment_fields:
-            site_time = storage_to_site(row.get(field), site_zone, storage_zone)
+            site_time = storage_to_site(row.get(field), site_zone)
             if site_time is not None:
                 row[field] = site_time
         return row

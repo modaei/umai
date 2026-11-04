@@ -486,7 +486,6 @@ def make_settings() -> Settings:
         umai_conversation_ttl_hours=168,
         umai_daily_user_limit_enabled=True,
         umai_daily_user_limit_requests=100,
-        timezone="UTC",
         vector_db_host="127.0.0.1",
         vector_db_port=5432,
         vector_db_user="ometrics",

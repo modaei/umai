@@ -348,11 +348,10 @@ def list_supported_reading_types() -> list[dict[str, Any]]:
 
 
 class ReadingClient:
-    def __init__(self, engine: Engine, max_rows: int = 500, storage_timezone: str = "UTC"):
+    def __init__(self, engine: Engine, max_rows: int = 500):
         self.engine = engine
         self.max_rows = max_rows
-        # Run ticket times are moments in the storage timezone; see _moment_bounds.
-        self.storage_zone = ZoneInfo(storage_timezone)
+        # Run ticket times are moments stored in UTC; see _moment_bounds.
         self._site_zones: dict[int, ZoneInfo] = {}
         self._missing_reading_exclusion_cache: dict[int, dict[str, tuple[int, ...]]] = {}
         self._table_columns_cache: dict[str, set[str]] = {}
@@ -376,7 +375,7 @@ class ReadingClient:
             pool_recycle=settings.db_pool_recycle,
             pool_pre_ping=True,
         )
-        return cls(engine, storage_timezone=settings.timezone)
+        return cls(engine)
 
     def list_reading_types(self) -> list[dict[str, Any]]:
         return list_supported_reading_types()
@@ -2411,20 +2410,20 @@ class ReadingClient:
     def _site_zone(self, site_id: int) -> ZoneInfo:
         """Return the site's timezone, looked up once per site."""
         if site_id not in self._site_zones:
-            self._site_zones[site_id] = lookup_site_zone(self.engine, site_id, self.storage_zone)
+            self._site_zones[site_id] = lookup_site_zone(self.engine, site_id)
         return self._site_zones[site_id]
 
     def _moment_bounds(
         self, site_id: int, definition: ReadingDefinition, start: datetime, end: datetime
     ) -> tuple[datetime, datetime]:
-        """Convert site-day bounds to storage time for moment columns (run ticket times).
+        """Convert site-day bounds to UTC for moment columns (run ticket times).
 
         Other readings store a plain date, which is compared as it is.
         """
         if definition.date_column == "date":
             return start, end
         zone = self._site_zone(site_id)
-        return tuple(site_to_storage(bound, zone, self.storage_zone) for bound in (start, end))
+        return tuple(site_to_storage(bound, zone) for bound in (start, end))
 
     def _moments_to_site(
         self, site_id: int, definition: ReadingDefinition, rows: list[dict[str, Any]]
@@ -2435,7 +2434,7 @@ class ReadingClient:
         zone = self._site_zone(site_id)
         converted = []
         for row in rows:
-            site_time = storage_to_site(row.get("date"), zone, self.storage_zone)
+            site_time = storage_to_site(row.get("date"), zone)
             if site_time is not None:
                 row = {**row, "date": site_time.isoformat(sep=" ")}
             converted.append(row)

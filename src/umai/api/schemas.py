@@ -21,8 +21,8 @@ class ChatRequest(BaseModel):
     site_id: int = Field(gt=0)
     response_mode: Literal["fast", "intelligent"] = "fast"
     current_date: date | None = None
-    # IANA timezone of the selected site. Production days and "today" follow the site's
-    # clock, which can differ from the server's TIMEZONE setting.
+    # IANA timezone of the selected site. Production days, "today" and the daily question
+    # limit follow the site's clock, which can differ from the server's.
     timezone: str | None = Field(default=None, max_length=64)
 
     @field_validator("timezone")

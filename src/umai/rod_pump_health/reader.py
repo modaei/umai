@@ -6,10 +6,9 @@ import hashlib
 import json
 import logging
 import math
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from typing import Literal
-from zoneinfo import ZoneInfo
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
@@ -32,6 +31,7 @@ from umai.rod_pump_health.surface_load import (
     PROBLEM_STATUSES,
     surface_load_check,
 )
+from umai.site_time import lookup_site_zone
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,6 @@ class RodPumpHealthAnalyzer:
         self,
         engine,
         archive_engine,
-        timezone,
         report_url,
         reviewer,
         http_post=httpx.post,
@@ -111,7 +110,9 @@ class RodPumpHealthAnalyzer:
     ):
         self.engine = engine
         self.archive_engine = archive_engine
-        self.timezone = ZoneInfo(timezone)
+        # Stored DATETIME moments (shutdowns) are UTC. Card times, days and review times
+        # are shown on each well's site clock; see site_zone().
+        self._site_zones = {}
         self.report_url = report_url
         self.reviewer = reviewer
         self.http_post = http_post
@@ -126,6 +127,12 @@ class RodPumpHealthAnalyzer:
         self.routing = {**DEFAULT_ROUTING, **(routing or {})}
         # Thresholds of the surface load check against the well's own recent cards.
         self.surface_load = {**DEFAULT_SURFACE_LOAD, **(surface_load or {})}
+
+    def site_zone(self, well_id):
+        """Return the timezone of the well's site, looked up once per well."""
+        if well_id not in self._site_zones:
+            self._site_zones[well_id] = lookup_site_zone(self.engine, self._well(well_id)["site_id"])
+        return self._site_zones[well_id]
 
     def _well(self, well_id):
         """Resolve site ownership and configured scope from the operational database."""
@@ -222,7 +229,7 @@ class RodPumpHealthAnalyzer:
         if (
             reference.pumping_window_start != timestamp - 600
             or reference.pumping_window_end != timestamp + 300
-            or reference.pumping_window_end > datetime.now(self.timezone).timestamp()
+            or reference.pumping_window_end > datetime.now(timezone.utc).timestamp()
         ):
             raise ValueError("Invalid or incomplete pumping window.")
         row["info"] = decoded(row["info"], {})
@@ -311,7 +318,7 @@ class RodPumpHealthAnalyzer:
             "pull_timestamp": card["pull_timestamp"],
             "pumping_window": card.get("pumping_window", {}),
             "source_card_id": card["source_card_id"],
-            "timestamp": datetime.fromtimestamp(card["card_timestamp"], self.timezone),
+            "timestamp": datetime.fromtimestamp(card["card_timestamp"], self.site_zone(well_id)),
             "header": header,
             "surface": physical_points(card["data_points"], 100, header.get("number_points") == 0),
             "downhole": downhole,
@@ -406,7 +413,7 @@ class RodPumpHealthAnalyzer:
 
     def _recent_shutdowns(self, well_id, before):
         """Shutdowns of the well that ended within a day before ``before``."""
-        moment = before.astimezone(self.timezone).replace(tzinfo=None)
+        moment = before.astimezone(timezone.utc).replace(tzinfo=None)
         with self.engine.connect() as connection:
             rows = connection.execute(
                 text(
@@ -419,8 +426,8 @@ class RodPumpHealthAnalyzer:
         for row in rows:
             end = row["end"]
             end = datetime.fromisoformat(str(end)) if not isinstance(end, datetime) else end
-            # Shutdown times are stored without an offset, in the app timezone.
-            shutdowns.append({"end": end.replace(tzinfo=self.timezone), "downtime_code": row["downtime_code"]})
+            # Shutdown times are stored without an offset, in UTC.
+            shutdowns.append({"end": end.replace(tzinfo=timezone.utc), "downtime_code": row["downtime_code"]})
         return shutdowns
 
     def _surface_load(self, packet):
@@ -432,21 +439,22 @@ class RodPumpHealthAnalyzer:
         try:
             history = self._surface_history(packet.well_id, card)
             current = {"time": int(card.timestamp.timestamp()), "max_load": max(loads), "min_load": min(loads)}
-            check = surface_load_check(history, current, self.timezone, self.surface_load)
+            site_zone = self.site_zone(packet.well_id)
+            check = surface_load_check(history, current, site_zone, self.surface_load)
             if check["status"] in PROBLEM_STATUSES:
                 # Only a collapse needs the shutdown history; run the check again with it.
                 since = datetime.fromisoformat(check["since"])
                 check = surface_load_check(
-                    history, current, self.timezone, self.surface_load,
+                    history, current, site_zone, self.surface_load,
                     shutdowns=self._recent_shutdowns(packet.well_id, since),
                 )
-                check["normal_card"] = self._normal_card(check.pop("normal_card_id"))
+                check["normal_card"] = self._normal_card(check.pop("normal_card_id"), site_zone)
             return check
         except Exception:
             logger.exception("Surface load check failed well_id=%s", packet.well_id)
             return None
 
-    def _normal_card(self, archive_id):
+    def _normal_card(self, archive_id, site_zone):
         """The last good card before a collapse, drawn under the current card on the page."""
         if archive_id is None:
             return None
@@ -466,7 +474,7 @@ class RodPumpHealthAnalyzer:
         limit = (self.point_limits or {}).get("surface")
         return {
             "reference": f"archive:{row['id']}",
-            "captured_at": datetime.fromtimestamp(int(row["card_timestamp"]), self.timezone).isoformat(),
+            "captured_at": datetime.fromtimestamp(int(row["card_timestamp"]), site_zone).isoformat(),
             "points": coordinates(
                 [Point(**point) for point in points], "sam1_reverse_time", limit
             ),
@@ -587,7 +595,7 @@ class RodPumpHealthAnalyzer:
             result["review_source"] = "llm"
             if result["review_status"] == "complete":
                 result["llm_review"] = {
-                    "reviewed_at": datetime.now(self.timezone).isoformat(timespec="seconds"),
+                    "reviewed_at": datetime.now(self.site_zone(well_id)).isoformat(timespec="seconds"),
                     "card_reference": packet.card.reference,
                     "card_captured_at": packet.card.timestamp.isoformat(),
                     "effort": effort,
@@ -695,7 +703,6 @@ def analyzer_from_settings(settings):
     return RodPumpHealthAnalyzer(
         operational,
         archive,
-        settings.timezone,
         settings.umreports_api_url,
         lambda content: health_reviewer(settings)(content),
         point_limits={

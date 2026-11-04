@@ -51,6 +51,7 @@ from umai.clients.well_filter_client import (
 from umai.clients.work_order_client import UnavailableWorkOrderClient, WorkOrderClient
 from umai.clients.view_navigation_client import ViewNavigationClient
 from umai.config.settings import Settings
+from umai.site_time import DEFAULT_SITE_TIMEZONE
 from umai.rag.vector_store import (
     UnavailableOperationalContextStore,
     VectorOperationalContextStore,
@@ -98,10 +99,11 @@ def answer_chat(
     """Answer a chat question for a site.
 
     "Today" is the caller's current_date when given; otherwise it is today on the site's
-    clock (site_timezone), falling back to the TIMEZONE setting for older callers.
+    clock (site_timezone), falling back to the default site timezone for older callers.
     """
     settings.validate()
-    effective_today = chat_today(current_date, site_timezone, settings.timezone)
+    # Callers that send no site timezone fall back to the default site timezone.
+    effective_today = chat_today(current_date, site_timezone, DEFAULT_SITE_TIMEZONE)
     effective_current_date = effective_today.isoformat()
     resolved_site_name = site_name or _site_name_from_db(settings, site_id)
 

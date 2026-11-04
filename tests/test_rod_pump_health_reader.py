@@ -123,7 +123,7 @@ def analyzer():
 
     # The fixture cards span only 1,000 lb, so the absolute surface collapse limit is off.
     service = RodPumpHealthAnalyzer(
-        operational, archive, "UTC", "http://reports", reviewer, post,
+        operational, archive, "http://reports", reviewer, post,
         surface_load={"low_load_range_lb": 0},
     )
     yield service, calls

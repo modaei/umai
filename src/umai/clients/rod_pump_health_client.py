@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine, URL
@@ -30,9 +29,8 @@ class RodPumpHealthClient:
     never writes and never starts an analysis.
     """
 
-    def __init__(self, engine: Engine, timezone: str = "UTC"):
+    def __init__(self, engine: Engine):
         self.engine = engine
-        self.timezone = ZoneInfo(timezone)
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "RodPumpHealthClient":
@@ -52,7 +50,7 @@ class RodPumpHealthClient:
             pool_timeout=settings.db_pool_timeout,
             pool_recycle=settings.db_pool_recycle,
         )
-        return cls(engine, timezone=settings.timezone)
+        return cls(engine)
 
     def well_health(self, site_id: int, well_name: str) -> dict[str, Any]:
         """Return the saved health review for one monitored rod-pump well."""
@@ -246,7 +244,7 @@ class RodPumpHealthClient:
     def _refresh_state(self, row: dict[str, Any]) -> dict[str, Any]:
         started = self._datetime(row["refresh_started_at"])
         state: dict[str, Any] = {
-            "in_progress": bool(started and datetime.now(self.timezone) - started < REFRESH_EXPIRY),
+            "in_progress": bool(started and datetime.now(timezone.utc) - started < REFRESH_EXPIRY),
         }
         if row["last_refresh_failed_at"]:
             state["last_failed_at"] = self._timestamp(row["last_refresh_failed_at"])
@@ -264,7 +262,8 @@ class RodPumpHealthClient:
                 return None
         if not isinstance(value, datetime):
             return None
-        return value.replace(tzinfo=self.timezone) if value.tzinfo is None else value.astimezone(self.timezone)
+        # Stored times are UTC.
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
     def _timestamp(self, value: Any) -> str | None:
         parsed = self._datetime(value)

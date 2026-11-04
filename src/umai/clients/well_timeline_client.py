@@ -44,13 +44,10 @@ class WellTimelineClient:
         engine: Engine,
         max_rows_per_source: int = 100,
         operational_context_store: OperationalContextSearchStore | None = None,
-        storage_timezone: str = "UTC",
     ):
         self.engine = engine
         self.max_rows_per_source = max_rows_per_source
         self.operational_context_store = operational_context_store
-        # Shutdown times are moments stored in this timezone; see _shutdowns.
-        self.storage_zone = ZoneInfo(storage_timezone)
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "WellTimelineClient":
@@ -71,7 +68,7 @@ class WellTimelineClient:
             pool_recycle=settings.db_pool_recycle,
             pool_pre_ping=True,
         )
-        return cls(engine, storage_timezone=settings.timezone)
+        return cls(engine)
 
     def get_well_timeline(
         self,
@@ -237,10 +234,10 @@ class WellTimelineClient:
         self, site_id: int, well_id: int, start_day: date, end_day: date
     ) -> list[dict[str, Any]]:
         """Return shutdown events overlapping the site days, with times on the site's clock."""
-        site_zone = lookup_site_zone(self.engine, site_id, self.storage_zone)
-        start_time = site_to_storage(datetime.combine(start_day, time.min), site_zone, self.storage_zone)
+        site_zone = lookup_site_zone(self.engine, site_id)
+        start_time = site_to_storage(datetime.combine(start_day, time.min), site_zone)
         end_time = site_to_storage(
-            datetime.combine(end_day, time.min) + timedelta(days=1), site_zone, self.storage_zone
+            datetime.combine(end_day, time.min) + timedelta(days=1), site_zone
         )
         query = text(
             """
@@ -264,8 +261,8 @@ class WellTimelineClient:
             end_time=end_time,
         ):
             code = row.get("downtime_code")
-            start = storage_to_site(row.get("start"), site_zone, self.storage_zone)
-            end = storage_to_site(row.get("end"), site_zone, self.storage_zone)
+            start = storage_to_site(row.get("start"), site_zone)
+            end = storage_to_site(row.get("end"), site_zone)
             details = {
                 "downtime_code": code,
                 "downtime_reason": DOWNTIME_CODES.get(code, code) if code else None,
@@ -288,7 +285,7 @@ class WellTimelineClient:
         self, site_id: int, well_id: int, start_time: datetime, end_time: datetime
     ) -> list[dict[str, Any]]:
         """Return well changes within the site-day range, with change times on the site's clock."""
-        site_zone = lookup_site_zone(self.engine, site_id, self.storage_zone)
+        site_zone = lookup_site_zone(self.engine, site_id)
         query = text(
             """
             SELECT changed_at, property, old_value, new_value, source
@@ -302,7 +299,7 @@ class WellTimelineClient:
         )
         return [
             self._event(
-                storage_to_site(row["changed_at"], site_zone, self.storage_zone),
+                storage_to_site(row["changed_at"], site_zone),
                 "well_history",
                 "Well history",
                 self._non_empty_fields(
@@ -312,8 +309,8 @@ class WellTimelineClient:
             for row in self._execute(
                 query,
                 well_id=well_id,
-                start_time=site_to_storage(start_time, site_zone, self.storage_zone),
-                end_time=site_to_storage(end_time, site_zone, self.storage_zone),
+                start_time=site_to_storage(start_time, site_zone),
+                end_time=site_to_storage(end_time, site_zone),
                 optional=True,
             )
         ]
@@ -323,11 +320,11 @@ class WellTimelineClient:
     ) -> list[dict[str, Any]]:
         """Return chart notes within the site-day range, with note times on the site's clock.
 
-        Note times are text in the storage timezone, minute precision.
+        Note times are text in UTC, minute precision.
         """
-        site_zone = lookup_site_zone(self.engine, site_id, self.storage_zone)
-        start_value = site_to_storage(start_time, site_zone, self.storage_zone).strftime("%Y-%m-%d %H:%M")
-        end_value = site_to_storage(end_time, site_zone, self.storage_zone).strftime("%Y-%m-%d %H:%M")
+        site_zone = lookup_site_zone(self.engine, site_id)
+        start_value = site_to_storage(start_time, site_zone).strftime("%Y-%m-%d %H:%M")
+        end_value = site_to_storage(end_time, site_zone).strftime("%Y-%m-%d %H:%M")
         query = text(
             """
             SELECT id AS source_id, x_axis_value, chart_name, note
@@ -359,7 +356,7 @@ class WellTimelineClient:
     def _note_time_to_site(self, value: Any, site_zone: ZoneInfo) -> Any:
         """Show a stored chart-note time on the site's clock; malformed text is kept as it is."""
         try:
-            return storage_to_site(value, site_zone, self.storage_zone)
+            return storage_to_site(value, site_zone)
         except ValueError:
             return value
 
@@ -498,8 +495,11 @@ class WellTimelineClient:
     def _alarms(
         self, site_id: int, well_name: str, start_time: datetime, end_time: datetime
     ) -> list[dict[str, Any]]:
-        start_ts = int(start_time.timestamp())
-        end_ts = int(end_time.timestamp())
+        """Return alarm events within the site-day range, with times on the site's clock."""
+        # The bounds are naive site-clock times; alarm times are epoch seconds.
+        site_zone = lookup_site_zone(self.engine, site_id)
+        start_ts = int(start_time.replace(tzinfo=site_zone).timestamp())
+        end_ts = int(end_time.replace(tzinfo=site_zone).timestamp())
         query = text(
             """
             SELECT alarm_events.happened_on,
@@ -532,7 +532,8 @@ class WellTimelineClient:
             well_name=f"%{well_name}%",
             optional=True,
         ):
-            event_time = datetime.fromtimestamp(row["happened_on"]).isoformat(sep=" ")
+            happened_at = datetime.fromtimestamp(row["happened_on"], site_zone).replace(tzinfo=None)
+            event_time = happened_at.isoformat(sep=" ")
             events.append(
                 self._event(
                     event_time,

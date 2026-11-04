@@ -66,7 +66,7 @@ def analyzer():
             "token_usage": {"input_tokens": 100, "output_tokens": 30, "total_tokens": 130},
         }
 
-    health = RodPumpHealthAnalyzer(engine, engine, "UTC", "unused", None)
+    health = RodPumpHealthAnalyzer(engine, engine, "unused", None)
     yield ParameterTrendAnalyzer(health, "http://monitoring/render", reviewer, http_get), calls
     engine.dispose()
 

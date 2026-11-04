@@ -102,7 +102,12 @@ UMAI AI agent
 Each `/chat` request names its `site_id` and may send the site's `current_date`
 and IANA `timezone`. Production days run midnight to midnight on the site's
 clock, so "today" is `current_date` when sent, otherwise today in `timezone`,
-otherwise today in the `TIMEZONE` setting.
+otherwise today in the default site timezone (America/Denver).
+
+Stored moments are always UTC: umetriqs writes DATETIME values in UTC, and
+MariaDB's `default-time-zone` is `'+00:00'`, so TIMESTAMP columns read in UTC too.
+Site times come from `sites.timezone`, and each user's daily question limit
+resets at midnight on the site's clock. UMAI has no timezone setting.
 
 The public `/chat` response contains only:
 
